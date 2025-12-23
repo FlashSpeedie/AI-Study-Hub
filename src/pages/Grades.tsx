@@ -9,7 +9,8 @@ import {
   Pencil,
   Trash2,
   ChevronUp,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,8 +37,8 @@ import {
   getLetterGrade, 
   getGradeColor,
   getGradeColorHex,
-  Subject,
-  Category
+  getTotalCategoryWeight,
+  percentageToGPA
 } from '@/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,10 @@ export default function Grades() {
   const currentSemester = currentYear?.semesters.find(s => s.id === selectedSemesterId);
   const currentSubject = currentSemester?.subjects.find(s => s.id === selectedSubjectId);
 
+  // Calculate weight validation
+  const totalWeight = currentSubject ? getTotalCategoryWeight(currentSubject) : 0;
+  const weightWarning = currentSubject && currentSubject.categories.length > 0 && totalWeight !== 100;
+
   // Handlers
   const handleSaveYear = () => {
     if (!yearDialog.value.trim()) {
@@ -97,11 +102,6 @@ export default function Grades() {
     setYearDialog({ open: false, value: '' });
   };
 
-  const handleDeleteYear = (id: string) => {
-    deleteAcademicYear(id);
-    toast.success('Year deleted');
-  };
-
   const handleSaveSemester = () => {
     if (!semesterDialog.value.trim() || !selectedYearId) {
       toast.error('Please enter a semester name');
@@ -115,12 +115,6 @@ export default function Grades() {
       toast.success('Semester added');
     }
     setSemesterDialog({ open: false, value: '' });
-  };
-
-  const handleDeleteSemester = (id: string) => {
-    if (!selectedYearId) return;
-    deleteSemester(selectedYearId, id);
-    toast.success('Semester deleted');
   };
 
   const handleSaveSubject = () => {
@@ -154,6 +148,17 @@ export default function Grades() {
       toast.error('Please enter a valid weight (1-100)');
       return;
     }
+    
+    // Check if adding this category would exceed 100%
+    const currentWeight = categoryDialog.edit 
+      ? totalWeight - (currentSubject?.categories.find(c => c.id === categoryDialog.edit)?.weight || 0)
+      : totalWeight;
+    
+    if (currentWeight + weight > 100) {
+      toast.error(`Cannot add ${weight}%. Current total is ${currentWeight}%. Maximum remaining is ${100 - currentWeight}%`);
+      return;
+    }
+    
     if (categoryDialog.edit) {
       updateCategory(selectedYearId, selectedSemesterId, selectedSubjectId, categoryDialog.edit, categoryDialog.name, weight);
       toast.success('Category updated');
@@ -212,6 +217,7 @@ export default function Grades() {
   // Subject Detail View
   if (currentSubject) {
     const subjectGrade = calculateSubjectGrade(currentSubject);
+    const subjectGPA = percentageToGPA(subjectGrade);
     
     return (
       <div className="max-w-5xl mx-auto animate-in">
@@ -232,22 +238,54 @@ export default function Grades() {
           >
             {currentSubject.name.charAt(0)}
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-display font-bold">{currentSubject.name}</h1>
-            <p style={{ color: getGradeColorHex(subjectGrade) }} className="text-sm font-medium">
-              Current Grade: {subjectGrade.toFixed(1)}%
-            </p>
+            <div className="flex items-center gap-3">
+              <p style={{ color: getGradeColorHex(subjectGrade) }} className="text-sm font-medium">
+                Current Grade: {subjectGrade.toFixed(1)}% ({getLetterGrade(subjectGrade)})
+              </p>
+              <span className="text-sm text-muted-foreground">
+                GPA: {subjectGPA.toFixed(2)}
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Weight Warning */}
+        {weightWarning && (
+          <Card className={cn(
+            "p-4 mb-6 flex items-center gap-3",
+            totalWeight < 100 ? "bg-amber/10 border-amber/30" : "bg-ruby/10 border-ruby/30"
+          )}>
+            <AlertTriangle className={cn("w-5 h-5", totalWeight < 100 ? "text-amber" : "text-ruby")} />
+            <div>
+              <p className="font-medium">
+                Category weights total {totalWeight}%
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {totalWeight < 100 
+                  ? `Add ${100 - totalWeight}% more weight to reach 100%`
+                  : `Remove ${totalWeight - 100}% to equal 100%`
+                }
+              </p>
+            </div>
+          </Card>
+        )}
 
         {/* Categories Section */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold">Assessment Categories</h2>
-              <p className="text-sm text-muted-foreground">Manage weighted categories and assignments</p>
+              <p className="text-sm text-muted-foreground">
+                Total weight: {totalWeight}% / 100%
+              </p>
             </div>
-            <Button onClick={() => setCategoryDialog({ open: true, name: '', weight: '' })} className="gap-2 bg-primary hover:bg-navy-light">
+            <Button 
+              onClick={() => setCategoryDialog({ open: true, name: '', weight: '' })} 
+              className="gap-2 bg-primary hover:bg-navy-light"
+              disabled={totalWeight >= 100}
+            >
               <Plus className="w-4 h-4" />
               Add Category
             </Button>
@@ -292,6 +330,21 @@ export default function Grades() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCategoryDialog({ 
+                              open: true, 
+                              edit: category.id,
+                              name: category.name, 
+                              weight: category.weight.toString() 
+                            });
+                          }}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
                         <Button
                           size="sm"
                           onClick={(e) => {
@@ -414,6 +467,12 @@ export default function Grades() {
                   value={categoryDialog.weight}
                   onChange={(e) => setCategoryDialog(prev => ({ ...prev, weight: e.target.value }))}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {categoryDialog.edit 
+                    ? `Current total: ${totalWeight}%`
+                    : `Remaining available: ${100 - totalWeight}%`
+                  }
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -571,7 +630,9 @@ export default function Grades() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {currentSemester.subjects.map((subject, index) => {
                 const grade = calculateSubjectGrade(subject);
+                const gpa = percentageToGPA(grade);
                 const hasGrades = subject.categories.some(c => c.assignments.length > 0);
+                const subjectTotalWeight = getTotalCategoryWeight(subject);
                 
                 return (
                   <motion.div
@@ -594,7 +655,12 @@ export default function Grades() {
                         >
                           <BookOpen className="w-5 h-5" style={{ color: subject.color }} />
                         </div>
-                        <h3 className="font-semibold truncate flex-1">{subject.name}</h3>
+                        <div className="flex-1">
+                          <h3 className="font-semibold truncate">{subject.name}</h3>
+                          <p className="text-xs text-muted-foreground">
+                            {subject.categories.length} categories • {subjectTotalWeight}% weight
+                          </p>
+                        </div>
                       </div>
                       
                       {hasGrades ? (
@@ -605,16 +671,29 @@ export default function Grades() {
                           >
                             {grade.toFixed(1)}%
                           </p>
-                          <span 
-                            className="text-sm font-medium"
-                            style={{ color: getGradeColorHex(grade) }}
-                          >
-                            {getLetterGrade(grade)}
-                          </span>
+                          <div className="flex items-center justify-center gap-2 mt-1">
+                            <span 
+                              className="text-sm font-medium"
+                              style={{ color: getGradeColorHex(grade) }}
+                            >
+                              {getLetterGrade(grade)}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              • GPA: {gpa.toFixed(2)}
+                            </span>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-center py-4">
                           <p className="text-muted-foreground">No grades yet</p>
+                        </div>
+                      )}
+                      
+                      {subjectTotalWeight !== 100 && subject.categories.length > 0 && (
+                        <div className="mt-2 text-center">
+                          <span className="text-xs text-amber">
+                            Weights don't equal 100%
+                          </span>
                         </div>
                       )}
                     </Card>
