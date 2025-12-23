@@ -1,9 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Allowed origins for CORS
+const allowedOrigins = [
+  'https://hchfnnicseujpbkrxpxm.lovableproject.com',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+
+const getCorsHeaders = (origin: string) => {
+  const allowedOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
 };
 
 // Input validation limits
@@ -13,6 +24,9 @@ const MAX_QUESTION_COUNT = 20;
 const MIN_QUESTION_COUNT = 1;
 
 serve(async (req) => {
+  const origin = req.headers.get('origin') || '';
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -66,10 +80,14 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      console.error('LOVABLE_API_KEY is not configured');
+      return new Response(JSON.stringify({ error: 'Service configuration error' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('Quiz generation request from user:', user.id, { topic: sanitizedTopic.substring(0, 50), questionCount: validQuestionCount, hasFile: !!sanitizedFileContent });
+    console.log('Quiz generation request processed');
 
     const contentToAnalyze = sanitizedFileContent 
       ? `Based on this content:\n\n${sanitizedFileContent}\n\nGenerate questions about this material.`
@@ -118,8 +136,7 @@ For true-false, correctAnswer must be "True" or "False".`
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
+      console.error('AI gateway error:', response.status);
       
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please wait and try again.' }), {
@@ -134,13 +151,16 @@ For true-false, correctAnswer must be "True" or "False".`
         });
       }
       
-      throw new Error('AI service unavailable');
+      return new Response(JSON.stringify({ error: 'AI service temporarily unavailable' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
     
-    console.log('AI Response received for user:', user.id);
+    console.log('Quiz generation completed');
 
     // Parse the JSON from the response
     let questions;
@@ -158,8 +178,11 @@ For true-false, correctAnswer must be "True" or "False".`
       }
       questions = JSON.parse(cleanContent.trim());
     } catch (e) {
-      console.error('Failed to parse quiz JSON:', e);
-      throw new Error('Failed to generate valid quiz questions');
+      console.error('Failed to parse quiz JSON');
+      return new Response(JSON.stringify({ error: 'Failed to generate valid quiz questions' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ questions }), {
@@ -167,9 +190,9 @@ For true-false, correctAnswer must be "True" or "False".`
     });
   } catch (error) {
     console.error('Quiz generation error:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
+    return new Response(JSON.stringify({ error: 'An error occurred processing your request' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req.headers.get('origin') || ''), 'Content-Type': 'application/json' },
     });
   }
 });
