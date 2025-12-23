@@ -1,9 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Input validation limits
+const MAX_TOPIC_LENGTH = 500;
+const MAX_FILE_CONTENT_LENGTH = 50000;
+const MAX_QUESTION_COUNT = 20;
+const MIN_QUESTION_COUNT = 1;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,18 +18,62 @@ serve(async (req) => {
   }
 
   try {
+    // Verify JWT and get user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { topic, questionCount, fileContent } = await req.json();
+    
+    // Validate and sanitize inputs
+    const sanitizedTopic = typeof topic === 'string' ? topic.substring(0, MAX_TOPIC_LENGTH).trim() : '';
+    const sanitizedFileContent = typeof fileContent === 'string' ? fileContent.substring(0, MAX_FILE_CONTENT_LENGTH) : '';
+    
+    // Validate question count
+    let validQuestionCount = parseInt(String(questionCount), 10);
+    if (isNaN(validQuestionCount) || validQuestionCount < MIN_QUESTION_COUNT) {
+      validQuestionCount = MIN_QUESTION_COUNT;
+    } else if (validQuestionCount > MAX_QUESTION_COUNT) {
+      validQuestionCount = MAX_QUESTION_COUNT;
+    }
+
+    // Ensure at least one input is provided
+    if (!sanitizedTopic && !sanitizedFileContent) {
+      return new Response(JSON.stringify({ error: 'Topic or file content is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    console.log('Quiz generation request:', { topic, questionCount, hasFile: !!fileContent });
+    console.log('Quiz generation request from user:', user.id, { topic: sanitizedTopic.substring(0, 50), questionCount: validQuestionCount, hasFile: !!sanitizedFileContent });
 
-    const contentToAnalyze = fileContent 
-      ? `Based on this content:\n\n${fileContent}\n\nGenerate questions about this material.`
-      : `Generate questions about the topic: ${topic}`;
+    const contentToAnalyze = sanitizedFileContent 
+      ? `Based on this content:\n\n${sanitizedFileContent}\n\nGenerate questions about this material.`
+      : `Generate questions about the topic: ${sanitizedTopic}`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -35,7 +86,7 @@ serve(async (req) => {
         messages: [
           { 
             role: 'system', 
-            content: `You are an expert quiz generator for STEM education. Generate exactly ${questionCount} quiz questions in valid JSON format.
+            content: `You are an expert quiz generator for STEM education. Generate exactly ${validQuestionCount} quiz questions in valid JSON format.
 
 Return ONLY a JSON array with this exact structure (no markdown, no explanation):
 [
@@ -89,7 +140,7 @@ For true-false, correctAnswer must be "True" or "False".`
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
     
-    console.log('AI Response:', content);
+    console.log('AI Response received for user:', user.id);
 
     // Parse the JSON from the response
     let questions;
@@ -107,7 +158,7 @@ For true-false, correctAnswer must be "True" or "False".`
       }
       questions = JSON.parse(cleanContent.trim());
     } catch (e) {
-      console.error('Failed to parse quiz JSON:', e, content);
+      console.error('Failed to parse quiz JSON:', e);
       throw new Error('Failed to generate valid quiz questions');
     }
 

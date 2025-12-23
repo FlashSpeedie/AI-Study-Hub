@@ -18,10 +18,13 @@ import {
   ChevronRight,
   Menu,
   X,
-  Shield
+  Shield,
+  Loader2
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   children: React.ReactNode;
@@ -42,9 +45,12 @@ const navItems = [
 export function Sidebar({ children }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, darkMode, toggleDarkMode, logout } = useStore();
+  const { darkMode, toggleDarkMode } = useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
     if (darkMode) {
@@ -54,9 +60,32 @@ export function Sidebar({ children }: SidebarProps) {
     }
   }, [darkMode]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  // Get user info from Supabase session
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserEmail(session.user.email || null);
+        setUsername(session.user.user_metadata?.username || session.user.email?.split('@')[0] || null);
+      }
+    };
+    getUser();
+  }, []);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        toast.error('Failed to sign out');
+        return;
+      }
+      navigate('/');
+    } catch (error) {
+      toast.error('An error occurred while signing out');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -148,7 +177,7 @@ export function Sidebar({ children }: SidebarProps) {
           )}>
             <div className="w-8 h-8 rounded-full bg-sidebar-primary flex items-center justify-center flex-shrink-0">
               <span className="text-sm font-semibold text-sidebar-primary-foreground">
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
+                {username?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
             <AnimatePresence>
@@ -160,10 +189,10 @@ export function Sidebar({ children }: SidebarProps) {
                   className="overflow-hidden min-w-0"
                 >
                   <p className="text-sm font-medium text-sidebar-foreground truncate">
-                    {user?.username || 'Student'}
+                    {username || 'Student'}
                   </p>
                   <p className="text-xs text-sidebar-foreground/60 truncate">
-                    {user?.email || 'student@ossm.edu'}
+                    {userEmail || 'student@ossm.edu'}
                   </p>
                 </motion.div>
               )}
@@ -181,10 +210,15 @@ export function Sidebar({ children }: SidebarProps) {
             </button>
             <button
               onClick={handleLogout}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-ruby/10 hover:bg-ruby/20 transition-colors text-ruby"
+              disabled={isLoggingOut}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-ruby/10 hover:bg-ruby/20 transition-colors text-ruby disabled:opacity-50"
             >
-              <LogOut className="w-4 h-4" />
-              {!collapsed && <span className="text-sm">Logout</span>}
+              {isLoggingOut ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <LogOut className="w-4 h-4" />
+              )}
+              {!collapsed && <span className="text-sm">{isLoggingOut ? 'Signing out...' : 'Logout'}</span>}
             </button>
           </div>
 

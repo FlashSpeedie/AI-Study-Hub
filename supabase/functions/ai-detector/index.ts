@@ -1,9 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Input validation limits
+const MAX_TEXT_LENGTH = 10000;
+const MIN_TEXT_LENGTH = 50;
 
 interface DetectorResult {
   name: string;
@@ -18,18 +23,58 @@ serve(async (req) => {
   }
 
   try {
+    // Verify JWT and get user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { text } = await req.json();
+    
+    // Validate text input
+    if (!text || typeof text !== 'string') {
+      return new Response(JSON.stringify({ error: 'Text is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const trimmedText = text.trim();
+    
+    if (trimmedText.length < MIN_TEXT_LENGTH) {
+      return new Response(JSON.stringify({ error: `Text must be at least ${MIN_TEXT_LENGTH} characters for accurate analysis` }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Sanitize and limit text length
+    const sanitizedText = trimmedText.substring(0, MAX_TEXT_LENGTH);
+
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    if (!text || text.trim().length === 0) {
-      throw new Error('Text is required for analysis');
-    }
-
-    console.log('AI Detector request received, text length:', text.length);
+    console.log('AI Detector request from user:', user.id, 'text length:', sanitizedText.length);
 
     // Use AI to simulate multiple detector analyses
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -103,7 +148,7 @@ The overallScore should be the weighted average of all detector scores.`
           },
           { 
             role: 'user', 
-            content: `Analyze this text for AI detection:\n\n${text.substring(0, 10000)}` 
+            content: `Analyze this text for AI detection:\n\n${sanitizedText}` 
           }
         ],
         temperature: 0.3,
@@ -159,7 +204,7 @@ The overallScore should be the weighted average of all detector scores.`
       };
     }
 
-    console.log('AI Detector analysis complete');
+    console.log('AI Detector analysis complete for user:', user.id);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
