@@ -11,6 +11,7 @@ import Grades from "./pages/Grades";
 import PeriodicTable from "./pages/PeriodicTable";
 import MathCalculator from "./pages/MathCalculator";
 import AIAssistant from "./pages/AIAssistant";
+import AIDetector from "./pages/AIDetector";
 import QuizGenerator from "./pages/QuizGenerator";
 import Pomodoro from "./pages/Pomodoro";
 import DormTasks from "./pages/DormTasks";
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/periodic-table" element={<ProtectedRoute><PeriodicTable /></ProtectedRoute>} />
           <Route path="/calculator" element={<ProtectedRoute><MathCalculator /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
+          <Route path="/ai-detector" element={<ProtectedRoute><AIDetector /></ProtectedRoute>} />
           <Route path="/quiz" element={<ProtectedRoute><QuizGenerator /></ProtectedRoute>} />
           <Route path="/pomodoro" element={<ProtectedRoute><Pomodoro /></ProtectedRoute>} />
           <Route path="/tasks" element={<ProtectedRoute><DormTasks /></ProtectedRoute>} />

@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  X
+  X,
+  Shield
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
@@ -32,6 +33,7 @@ const navItems = [
   { path: '/periodic-table', icon: Atom, label: 'Periodic Table' },
   { path: '/calculator', icon: Calculator, label: 'Math Engine' },
   { path: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
+  { path: '/ai-detector', icon: Shield, label: 'AI Detector' },
   { path: '/quiz', icon: Brain, label: 'Quiz Architect' },
   { path: '/pomodoro', icon: Timer, label: 'Pomodoro' },
   { path: '/tasks', icon: ListTodo, label: 'Dorm Tasks' },

@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.generate-quiz]
 verify_jwt = false
+
+[functions.ai-detector]
+verify_jwt = false
