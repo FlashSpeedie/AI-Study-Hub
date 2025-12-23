@@ -1,9 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Input validation limits
+const MAX_MESSAGE_LENGTH = 10000;
+const MAX_MESSAGES = 50;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,14 +16,65 @@ serve(async (req) => {
   }
 
   try {
+    // Verify JWT and get user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { messages } = await req.json();
+    
+    // Validate messages input
+    if (!messages || !Array.isArray(messages)) {
+      return new Response(JSON.stringify({ error: 'Invalid messages format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (messages.length > MAX_MESSAGES) {
+      return new Response(JSON.stringify({ error: `Too many messages. Maximum is ${MAX_MESSAGES}` }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate and sanitize each message
+    const sanitizedMessages = messages.map((msg: any) => {
+      if (!msg || typeof msg !== 'object') {
+        throw new Error('Invalid message structure');
+      }
+      
+      const role = msg.role === 'assistant' ? 'assistant' : 'user';
+      let content = String(msg.content || '').substring(0, MAX_MESSAGE_LENGTH);
+      
+      return { role, content };
+    });
+
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    console.log('AI Chat request received with', messages.length, 'messages');
+    console.log('AI Chat request from user:', user.id, 'with', sanitizedMessages.length, 'messages');
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -43,7 +99,7 @@ Your role is to:
 
 Keep responses clear, educational, and appropriately detailed for high school/college level students.`
           },
-          ...messages,
+          ...sanitizedMessages,
         ],
         stream: true,
       }),

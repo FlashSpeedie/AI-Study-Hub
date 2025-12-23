@@ -1,10 +1,12 @@
+import { useEffect, useState } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useStore } from "@/store/useStore";
+import { supabase } from '@/integrations/supabase/client';
 import { Sidebar } from "@/components/layout/Sidebar";
+import { Session, User } from '@supabase/supabase-js';
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Grades from "./pages/Grades";
@@ -19,10 +21,54 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useStore();
-  if (!isAuthenticated) return <Navigate to="/" replace />;
+function ProtectedRoute({ children, session }: { children: React.ReactNode; session: Session | null }) {
+  if (!session) return <Navigate to="/" replace />;
   return <Sidebar>{children}</Sidebar>;
+}
+
+function AppRoutes() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <Auth />} />
+      <Route path="/dashboard" element={<ProtectedRoute session={session}><Dashboard /></ProtectedRoute>} />
+      <Route path="/grades" element={<ProtectedRoute session={session}><Grades /></ProtectedRoute>} />
+      <Route path="/periodic-table" element={<ProtectedRoute session={session}><PeriodicTable /></ProtectedRoute>} />
+      <Route path="/calculator" element={<ProtectedRoute session={session}><MathCalculator /></ProtectedRoute>} />
+      <Route path="/ai-assistant" element={<ProtectedRoute session={session}><AIAssistant /></ProtectedRoute>} />
+      <Route path="/ai-detector" element={<ProtectedRoute session={session}><AIDetector /></ProtectedRoute>} />
+      <Route path="/quiz" element={<ProtectedRoute session={session}><QuizGenerator /></ProtectedRoute>} />
+      <Route path="/pomodoro" element={<ProtectedRoute session={session}><Pomodoro /></ProtectedRoute>} />
+      <Route path="/tasks" element={<ProtectedRoute session={session}><DormTasks /></ProtectedRoute>} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
 }
 
 const App = () => (
@@ -31,19 +77,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Auth />} />
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/grades" element={<ProtectedRoute><Grades /></ProtectedRoute>} />
-          <Route path="/periodic-table" element={<ProtectedRoute><PeriodicTable /></ProtectedRoute>} />
-          <Route path="/calculator" element={<ProtectedRoute><MathCalculator /></ProtectedRoute>} />
-          <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
-          <Route path="/ai-detector" element={<ProtectedRoute><AIDetector /></ProtectedRoute>} />
-          <Route path="/quiz" element={<ProtectedRoute><QuizGenerator /></ProtectedRoute>} />
-          <Route path="/pomodoro" element={<ProtectedRoute><Pomodoro /></ProtectedRoute>} />
-          <Route path="/tasks" element={<ProtectedRoute><DormTasks /></ProtectedRoute>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
