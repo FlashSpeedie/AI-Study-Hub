@@ -122,12 +122,65 @@ export function calculateSubjectGrade(subject: Subject): number {
   return totalWeight > 0 ? weightedSum / totalWeight : 0;
 }
 
+export function getTotalCategoryWeight(subject: Subject): number {
+  return subject.categories.reduce((sum, c) => sum + c.weight, 0);
+}
+
 export function getLetterGrade(percentage: number): string {
   if (percentage >= 90) return 'A';
   if (percentage >= 80) return 'B';
   if (percentage >= 70) return 'C';
   if (percentage >= 60) return 'D';
   return 'F';
+}
+
+export function percentageToGPA(percentage: number): number {
+  if (percentage >= 93) return 4.0;
+  if (percentage >= 90) return 3.7;
+  if (percentage >= 87) return 3.3;
+  if (percentage >= 83) return 3.0;
+  if (percentage >= 80) return 2.7;
+  if (percentage >= 77) return 2.3;
+  if (percentage >= 73) return 2.0;
+  if (percentage >= 70) return 1.7;
+  if (percentage >= 67) return 1.3;
+  if (percentage >= 63) return 1.0;
+  if (percentage >= 60) return 0.7;
+  return 0.0;
+}
+
+export function calculateSemesterGPA(semester: Semester): number {
+  if (semester.subjects.length === 0) return 0;
+  
+  let totalGPA = 0;
+  let gradedSubjects = 0;
+  
+  for (const subject of semester.subjects) {
+    if (subject.categories.some(c => c.assignments.length > 0)) {
+      const grade = calculateSubjectGrade(subject);
+      totalGPA += percentageToGPA(grade);
+      gradedSubjects++;
+    }
+  }
+  
+  return gradedSubjects > 0 ? totalGPA / gradedSubjects : 0;
+}
+
+export function calculateOverallGPA(years: AcademicYear[]): number {
+  let totalGPA = 0;
+  let semesterCount = 0;
+  
+  for (const year of years) {
+    for (const semester of year.semesters) {
+      const gpa = calculateSemesterGPA(semester);
+      if (gpa > 0) {
+        totalGPA += gpa;
+        semesterCount++;
+      }
+    }
+  }
+  
+  return semesterCount > 0 ? totalGPA / semesterCount : 0;
 }
 
 export function getGradeColor(percentage: number): string {

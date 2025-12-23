@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Brain, Loader2, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { Brain, Loader2, CheckCircle, XCircle, RotateCcw, Upload, FileText, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { generateId } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Question {
   id: string;
@@ -25,29 +26,86 @@ export default function QuizGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const generateQuiz = () => {
-    if (!topic.trim()) {
-      toast.error('Please enter a topic');
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.txt')) {
+      toast.error('Please upload PDF, Word, or text files');
+      return;
+    }
+
+    try {
+      let content = '';
+      
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        content = await file.text();
+      } else {
+        content = `[Content from uploaded file: ${file.name}]`;
+        toast.info('Note: Full document analysis works best with text files');
+      }
+
+      setUploadedFile({ name: file.name, content });
+      toast.success(`File "${file.name}" uploaded`);
+    } catch (error) {
+      toast.error('Failed to read file');
+    }
+  };
+
+  const generateQuiz = async () => {
+    if (!topic.trim() && !uploadedFile) {
+      toast.error('Please enter a topic or upload a file');
       return;
     }
 
     setIsGenerating(true);
     
-    // Simulate quiz generation (replace with AI backend)
-    setTimeout(() => {
-      const sampleQuestions: Question[] = [
-        { id: generateId(), type: 'multiple-choice' as const, question: `What is a key concept in ${topic}?`, options: ['Option A', 'Option B', 'Option C', 'Option D'], correctAnswer: 'Option A' },
-        { id: generateId(), type: 'true-false' as const, question: `${topic} is an important subject in STEM education.`, correctAnswer: 'True' },
-        { id: generateId(), type: 'fill-blank' as const, question: `The study of ${topic} helps develop _____ skills.`, correctAnswer: 'analytical' },
-        { id: generateId(), type: 'multiple-choice' as const, question: `Which field is ${topic} most related to?`, options: ['Science', 'Art', 'Music', 'Sports'], correctAnswer: 'Science' },
-        { id: generateId(), type: 'true-false' as const, question: `Understanding ${topic} requires practice.`, correctAnswer: 'True' },
-      ].slice(0, questionCount);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-quiz`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          questionCount,
+          fileContent: uploadedFile?.content,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate quiz');
+      }
+
+      const data = await response.json();
       
-      setQuestions(sampleQuestions);
+      if (!data.questions || !Array.isArray(data.questions)) {
+        throw new Error('Invalid quiz format received');
+      }
+
+      // Add IDs to questions
+      const questionsWithIds: Question[] = data.questions.map((q: any) => ({
+        ...q,
+        id: generateId(),
+      }));
+
+      setQuestions(questionsWithIds);
+      setUploadedFile(null);
+      toast.success('Quiz generated successfully!');
+    } catch (error) {
+      console.error('Quiz generation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate quiz');
+    } finally {
       setIsGenerating(false);
-      toast.success('Quiz generated! Full AI generation requires backend connection.');
-    }, 2000);
+    }
   };
 
   const handleAnswer = (questionId: string, answer: string) => {
@@ -69,6 +127,7 @@ export default function QuizGenerator() {
     setQuestions([]);
     setShowResults(false);
     setTopic('');
+    setUploadedFile(null);
   };
 
   return (
@@ -78,14 +137,14 @@ export default function QuizGenerator() {
           <Brain className="w-8 h-8 text-primary" />
           <h1 className="text-3xl font-display font-bold">Quiz Architect</h1>
         </div>
-        <p className="text-muted-foreground">Generate practice tests on any topic</p>
+        <p className="text-muted-foreground">Generate AI-powered practice tests on any topic</p>
       </div>
 
       {questions.length === 0 ? (
         <Card className="p-6">
           <div className="space-y-4">
             <div>
-              <Label>Topic or Subject</Label>
+              <Label>Topic or Subject (optional if uploading a file)</Label>
               <Textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
@@ -93,6 +152,46 @@ export default function QuizGenerator() {
                 className="mt-2"
               />
             </div>
+
+            <div>
+              <Label>Upload Study Material (optional)</Label>
+              <div className="mt-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".pdf,.doc,.docx,.txt"
+                  className="hidden"
+                />
+                {uploadedFile ? (
+                  <div className="flex items-center gap-2 p-3 bg-accent rounded-lg">
+                    <FileText className="w-5 h-5 text-primary" />
+                    <span className="flex-1 truncate">{uploadedFile.name}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => setUploadedFile(null)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    className="w-full gap-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload PDF, Word, or Text File
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Upload notes, textbooks, or study materials to generate questions from them
+              </p>
+            </div>
+
             <div>
               <Label>Number of Questions</Label>
               <Input
@@ -104,11 +203,16 @@ export default function QuizGenerator() {
                 className="mt-2 w-32"
               />
             </div>
-            <Button onClick={generateQuiz} disabled={isGenerating} className="w-full">
+
+            <Button 
+              onClick={generateQuiz} 
+              disabled={isGenerating || (!topic.trim() && !uploadedFile)} 
+              className="w-full"
+            >
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating...
+                  Generating Quiz...
                 </>
               ) : (
                 'Generate Quiz'

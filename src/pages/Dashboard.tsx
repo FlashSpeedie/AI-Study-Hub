@@ -6,11 +6,19 @@ import {
   Clock, 
   CheckCircle,
   Calendar,
-  Target
+  Target,
+  Award
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { useStore } from '@/store/useStore';
-import { calculateSubjectGrade, getLetterGrade, getGradeColor } from '@/types';
+import { 
+  calculateSubjectGrade, 
+  calculateSemesterGPA,
+  calculateOverallGPA,
+  getLetterGrade, 
+  getGradeColor,
+  percentageToGPA
+} from '@/types';
 
 export default function Dashboard() {
   const { user, academicYears, selectedYearId, selectedSemesterId, tasks } = useStore();
@@ -25,6 +33,13 @@ export default function Dashboard() {
     const subjects = currentData.semester?.subjects || [];
     const totalSubjects = subjects.length;
     
+    // Calculate semester GPA
+    const semesterGPA = currentData.semester ? calculateSemesterGPA(currentData.semester) : 0;
+    
+    // Calculate overall GPA across all years
+    const overallGPA = calculateOverallGPA(academicYears);
+    
+    // Calculate average percentage
     let totalGrade = 0;
     let gradedSubjects = 0;
     
@@ -36,55 +51,58 @@ export default function Dashboard() {
       }
     });
 
-    const gpa = gradedSubjects > 0 ? totalGrade / gradedSubjects : 0;
+    const avgPercentage = gradedSubjects > 0 ? totalGrade / gradedSubjects : 0;
     const completedTasks = tasks.filter(t => t.completed).length;
     const pendingTasks = tasks.filter(t => !t.completed).length;
 
     return {
       totalSubjects,
-      gpa: gpa.toFixed(1),
-      gpaLetter: getLetterGrade(gpa),
+      avgPercentage: avgPercentage.toFixed(1),
+      avgLetter: getLetterGrade(avgPercentage),
+      semesterGPA: semesterGPA.toFixed(2),
+      overallGPA: overallGPA.toFixed(2),
       completedTasks,
       pendingTasks,
     };
-  }, [currentData.semester, tasks]);
+  }, [currentData.semester, tasks, academicYears]);
 
   const recentSubjects = useMemo(() => {
     const subjects = currentData.semester?.subjects || [];
     return subjects.slice(0, 6).map(subject => ({
       ...subject,
       grade: calculateSubjectGrade(subject),
+      gpa: percentageToGPA(calculateSubjectGrade(subject)),
       hasGrades: subject.categories.some(c => c.assignments.length > 0),
     }));
   }, [currentData.semester]);
 
   const statCards = [
     {
-      title: 'Current GPA',
-      value: stats.gpa + '%',
-      subtitle: `Letter Grade: ${stats.gpaLetter}`,
-      icon: TrendingUp,
+      title: 'Semester GPA',
+      value: stats.semesterGPA,
+      subtitle: `${stats.avgPercentage}% average`,
+      icon: Award,
       color: 'bg-emerald/10 text-emerald',
+    },
+    {
+      title: 'Cumulative GPA',
+      value: stats.overallGPA,
+      subtitle: 'All semesters',
+      icon: TrendingUp,
+      color: 'bg-sky/10 text-sky',
     },
     {
       title: 'Active Subjects',
       value: stats.totalSubjects.toString(),
       subtitle: currentData.semester?.name || 'No semester selected',
       icon: BookOpen,
-      color: 'bg-sky/10 text-sky',
+      color: 'bg-amber/10 text-amber',
     },
     {
       title: 'Tasks Completed',
       value: stats.completedTasks.toString(),
       subtitle: `${stats.pendingTasks} pending`,
       icon: CheckCircle,
-      color: 'bg-amber/10 text-amber',
-    },
-    {
-      title: 'Academic Year',
-      value: currentData.year?.name || '—',
-      subtitle: 'Current session',
-      icon: Calendar,
       color: 'bg-primary/10 text-primary',
     },
   ];
@@ -186,9 +204,14 @@ export default function Dashboard() {
                       >
                         {subject.grade.toFixed(1)}%
                       </p>
-                      <span className={`grade-badge ${getGradeColor(subject.grade)}`}>
-                        {getLetterGrade(subject.grade)}
-                      </span>
+                      <div className="flex items-center justify-center gap-2 mt-1">
+                        <span className={`grade-badge ${getGradeColor(subject.grade)}`}>
+                          {getLetterGrade(subject.grade)}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          GPA: {subject.gpa.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-2">
