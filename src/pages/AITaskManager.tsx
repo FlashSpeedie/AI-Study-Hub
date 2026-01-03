@@ -37,6 +37,7 @@ interface Task {
   completed: boolean;
   priority: 'low' | 'medium' | 'high';
   due_date: string | null;
+  category: string;
   created_at: string;
 }
 
@@ -44,12 +45,14 @@ type SuggestionTask = {
   title: string;
   priority: 'low' | 'medium' | 'high';
   category: string;
+  suggested_due_date: string;
 };
 
 export default function AITaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [category, setCategory] = useState('General');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
@@ -57,6 +60,9 @@ export default function AITaskManager() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestionTask[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  const categories = ['General', 'Study', 'Review', 'Practice', 'Research', 'Writing', 'Organization', 'Exam Prep', 'Project', 'Reading', 'Other'];
 
   useEffect(() => {
     fetchTasks();
@@ -78,6 +84,7 @@ export default function AITaskManager() {
         ...t,
         priority: t.priority as 'low' | 'medium' | 'high',
         due_date: t.due_date ?? null,
+        category: t.category ?? 'General',
       })));
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -103,6 +110,7 @@ export default function AITaskManager() {
         .insert({
           title: newTask.trim(),
           priority,
+          category,
           due_date: dueDate || null,
           user_id: user.id,
           completed: false,
@@ -116,12 +124,14 @@ export default function AITaskManager() {
         ...data,
         priority: data.priority as 'low' | 'medium' | 'high',
         due_date: data.due_date ?? null,
+        category: data.category ?? 'General',
       };
 
       setTasks([newTaskData, ...tasks]);
       setNewTask('');
       setDueDate('');
       setPriority('medium');
+      setCategory('General');
       toast.success('Task added');
     } catch (error) {
       console.error('Error adding task:', error);
@@ -210,6 +220,8 @@ export default function AITaskManager() {
         .insert({
           title: suggestion.title,
           priority: suggestion.priority,
+          category: suggestion.category,
+          due_date: suggestion.suggested_due_date || null,
           user_id: user.id,
           completed: false,
         })
@@ -222,6 +234,7 @@ export default function AITaskManager() {
         ...data,
         priority: data.priority as 'low' | 'medium' | 'high',
         due_date: data.due_date ?? null,
+        category: data.category ?? 'General',
       };
 
       setTasks([newTaskData, ...tasks]);
@@ -236,10 +249,12 @@ export default function AITaskManager() {
   };
 
   const filteredTasks = tasks.filter(task => {
-    if (filter === 'active') return !task.completed;
-    if (filter === 'completed') return task.completed;
-    return true;
+    const statusMatch = filter === 'all' ? true : filter === 'active' ? !task.completed : task.completed;
+    const categoryMatch = categoryFilter === 'all' ? true : task.category === categoryFilter;
+    return statusMatch && categoryMatch;
   });
+
+  const uniqueCategories = [...new Set(tasks.map(t => t.category))];
 
   const completedCount = tasks.filter(t => t.completed).length;
 
@@ -319,20 +334,28 @@ export default function AITaskManager() {
                   <button
                     onClick={() => addSuggestion(suggestion)}
                     disabled={isAdding}
-                    className="w-full text-left p-3 rounded-lg bg-background/50 hover:bg-background border border-border hover:border-primary/30 transition-all flex items-center justify-between gap-2"
+                    className="w-full text-left p-3 rounded-lg bg-background/50 hover:bg-background border border-border hover:border-primary/30 transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <Plus className="w-4 h-4 text-primary" />
-                      <span>{suggestion.title}</span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-3">
+                        <Plus className="w-4 h-4 text-primary" />
+                        <span className="font-medium">{suggestion.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {suggestion.category}
+                        </Badge>
+                        <Badge className={cn('text-xs', priorityColors[suggestion.priority])}>
+                          {suggestion.priority}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {suggestion.category}
-                      </Badge>
-                      <Badge className={cn('text-xs', priorityColors[suggestion.priority])}>
-                        {suggestion.priority}
-                      </Badge>
-                    </div>
+                    {suggestion.suggested_due_date && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground ml-7">
+                        <Calendar className="w-3 h-3" />
+                        <span>Suggested: {format(new Date(suggestion.suggested_due_date), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
                   </button>
                 </motion.div>
               ))}
@@ -351,7 +374,17 @@ export default function AITaskManager() {
             onKeyDown={(e) => e.key === 'Enter' && addTask()}
             className="flex-1"
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(cat => (
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={priority} onValueChange={(v: 'low' | 'medium' | 'high') => setPriority(v)}>
               <SelectTrigger className="w-28">
                 <SelectValue />
@@ -409,7 +442,7 @@ export default function AITaskManager() {
             </div>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant={filter === 'all' ? 'default' : 'outline'}
             size="sm"
@@ -431,6 +464,19 @@ export default function AITaskManager() {
           >
             Completed
           </Button>
+          {uniqueCategories.length > 0 && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {uniqueCategories.map(cat => (
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
@@ -479,12 +525,19 @@ export default function AITaskManager() {
                     )}>
                       {task.title}
                     </span>
-                    {task.due_date && (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Calendar className="w-3 h-3" />
-                        {format(new Date(task.due_date), 'MMM d, yyyy')}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {task.category && task.category !== 'General' && (
+                        <Badge variant="outline" className="text-xs">
+                          {task.category}
+                        </Badge>
+                      )}
+                      {task.due_date && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {format(new Date(task.due_date), 'MMM d, yyyy')}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
                     {task.priority}

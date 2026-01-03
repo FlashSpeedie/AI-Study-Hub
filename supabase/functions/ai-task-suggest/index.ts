@@ -21,6 +21,9 @@ serve(async (req) => {
 
     console.log('Generating task suggestions for prompt:', prompt);
 
+    // Get current date for due date calculations
+    const today = new Date().toISOString().split('T')[0];
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -32,7 +35,16 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a helpful task planning assistant for students. Generate actionable, specific task suggestions based on the user's goals. Always return tasks that are clear and achievable.`
+            content: `You are a helpful task planning assistant for students. Generate actionable, specific task suggestions based on the user's goals. 
+            
+Today's date is ${today}. When suggesting due dates:
+- High priority tasks should be due within 1-3 days
+- Medium priority tasks should be due within 3-7 days  
+- Low priority tasks can be due within 1-2 weeks
+- Consider the context and deadlines mentioned by the user
+- Return dates in YYYY-MM-DD format
+
+Categories should be one of: Study, Review, Practice, Research, Writing, Organization, Exam Prep, Project, Reading, or Other.`
           },
           {
             role: 'user',
@@ -44,7 +56,7 @@ serve(async (req) => {
             type: 'function',
             function: {
               name: 'suggest_tasks',
-              description: 'Return 3-5 actionable task suggestions for the student.',
+              description: 'Return 3-5 actionable task suggestions for the student with appropriate due dates.',
               parameters: {
                 type: 'object',
                 properties: {
@@ -55,9 +67,10 @@ serve(async (req) => {
                       properties: {
                         title: { type: 'string', description: 'A clear, actionable task title' },
                         priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Task priority based on urgency' },
-                        category: { type: 'string', description: 'Category like Study, Review, Practice, Organize, etc.' }
+                        category: { type: 'string', description: 'Category like Study, Review, Practice, Research, Writing, Organization, Exam Prep, Project, Reading, or Other' },
+                        suggested_due_date: { type: 'string', description: 'Suggested due date in YYYY-MM-DD format based on priority and complexity' }
                       },
-                      required: ['title', 'priority', 'category'],
+                      required: ['title', 'priority', 'category', 'suggested_due_date'],
                       additionalProperties: false
                     }
                   }
