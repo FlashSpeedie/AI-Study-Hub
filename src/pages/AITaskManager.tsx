@@ -10,15 +10,19 @@ import {
   Circle, 
   Wand2,
   Loader2,
-  Send,
-  RefreshCw
+  Bell,
+  BellOff,
+  CalendarDays,
+  List,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -26,10 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, isAfter, isBefore, parseISO, differenceInMinutes } from 'date-fns';
+import TaskCalendarView from '@/components/tasks/TaskCalendarView';
+import TaskTimePicker from '@/components/tasks/TaskTimePicker';
+import { useTaskNotifications } from '@/hooks/useTaskNotifications';
 
 interface Task {
   id: string;
@@ -62,11 +74,26 @@ export default function AITaskManager() {
   const [suggestions, setSuggestions] = useState<SuggestionTask[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   const categories = ['General', 'Study', 'Review', 'Practice', 'Research', 'Writing', 'Organization', 'Exam Prep', 'Project', 'Reading', 'Other'];
 
+  // Task notifications hook
+  const { 
+    permissionGranted, 
+    notificationsEnabled, 
+    requestPermission, 
+    toggleNotifications 
+  } = useTaskNotifications({ 
+    tasks, 
+    enabled: true,
+    reminderMinutes: 5 
+  });
+
   useEffect(() => {
     fetchTasks();
+    // Request notification permission on mount
+    requestPermission();
   }, []);
 
   const fetchTasks = async () => {
@@ -274,6 +301,20 @@ export default function AITaskManager() {
     }
   };
 
+  // Get overdue and upcoming tasks
+  const now = new Date();
+  const overdueTasks = tasks.filter(t => {
+    if (t.completed || !t.due_date) return false;
+    return isBefore(parseISO(t.due_date), now);
+  });
+
+  const upcomingSoonTasks = tasks.filter(t => {
+    if (t.completed || !t.due_date) return false;
+    const dueDate = parseISO(t.due_date);
+    const diff = differenceInMinutes(dueDate, now);
+    return diff > 0 && diff <= 60; // Due within the next hour
+  });
+
   const filteredTasks = tasks.filter(task => {
     const statusMatch = filter === 'all' ? true : filter === 'active' ? !task.completed : task.completed;
     const categoryMatch = categoryFilter === 'all' ? true : task.category === categoryFilter;
@@ -290,6 +331,27 @@ export default function AITaskManager() {
     high: 'bg-ruby/20 text-ruby border-ruby/30',
   };
 
+  const formatTaskDateTime = (dueDate: string) => {
+    const date = parseISO(dueDate);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    // If it's 23:59, just show date
+    if (hours === 23 && minutes === 59) {
+      return format(date, 'MMM d, yyyy');
+    }
+    return format(date, 'MMM d, yyyy h:mm a');
+  };
+
+  const getTaskUrgency = (task: Task) => {
+    if (!task.due_date || task.completed) return null;
+    const dueDate = parseISO(task.due_date);
+    const diff = differenceInMinutes(dueDate, now);
+    if (diff < 0) return 'overdue';
+    if (diff <= 5) return 'imminent';
+    if (diff <= 60) return 'soon';
+    return null;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -299,14 +361,77 @@ export default function AITaskManager() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-in">
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <Sparkles className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl font-display font-bold">AI Task Manager</h1>
+    <div className="max-w-5xl mx-auto animate-in">
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Sparkles className="w-8 h-8 text-primary" />
+            <h1 className="text-3xl font-display font-bold">AI Task Manager</h1>
+          </div>
+          <p className="text-muted-foreground">Intelligent task management powered by AI</p>
         </div>
-        <p className="text-muted-foreground">Intelligent task management powered by AI</p>
+        
+        {/* Notification Toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={notificationsEnabled ? "default" : "outline"}
+              size="icon"
+              onClick={() => {
+                if (!permissionGranted) {
+                  requestPermission();
+                }
+                toggleNotifications();
+              }}
+              className="relative"
+            >
+              {notificationsEnabled ? (
+                <Bell className="w-4 h-4" />
+              ) : (
+                <BellOff className="w-4 h-4" />
+              )}
+              {notificationsEnabled && upcomingSoonTasks.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-ruby text-white text-xs rounded-full flex items-center justify-center">
+                  {upcomingSoonTasks.length}
+                </span>
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {notificationsEnabled ? 'Notifications enabled (5 min reminder)' : 'Enable notifications'}
+          </TooltipContent>
+        </Tooltip>
       </div>
+
+      {/* Overdue Tasks Alert */}
+      <AnimatePresence>
+        {overdueTasks.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <Card className="p-4 mb-6 border-ruby/30 bg-ruby/5">
+              <div className="flex items-center gap-2 text-ruby mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-semibold">Overdue Tasks ({overdueTasks.length})</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {overdueTasks.slice(0, 5).map(task => (
+                  <Badge key={task.id} variant="outline" className="border-ruby/30 text-ruby">
+                    {task.title}
+                  </Badge>
+                ))}
+                {overdueTasks.length > 5 && (
+                  <Badge variant="outline" className="border-ruby/30 text-ruby">
+                    +{overdueTasks.length - 5} more
+                  </Badge>
+                )}
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* AI Suggestions Section */}
       <Card className="p-5 mb-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
@@ -392,7 +517,7 @@ export default function AITaskManager() {
 
       {/* Add Task */}
       <Card className="p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col gap-3">
           <Input
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
@@ -400,7 +525,7 @@ export default function AITaskManager() {
             onKeyDown={(e) => e.key === 'Enter' && addTask()}
             className="flex-1"
           />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <Select value={category} onValueChange={setCategory}>
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Category" />
@@ -440,24 +565,22 @@ export default function AITaskManager() {
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-36"
+              className="w-40"
             />
-            <Input
-              type="time"
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-              className="w-28"
-              placeholder="Time"
+            <TaskTimePicker 
+              value={dueTime} 
+              onChange={setDueTime}
+              className="w-32"
             />
             <Button onClick={addTask} disabled={isAdding} className="gap-2">
               <Plus className="w-4 h-4" />
-              Add
+              Add Task
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* Progress & Filter */}
+      {/* View Toggle & Filters */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
         {tasks.length > 0 && (
           <div className="flex-1 w-full sm:max-w-xs">
@@ -475,119 +598,173 @@ export default function AITaskManager() {
             </div>
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={filter === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('all')}
-          >
-            All
-          </Button>
-          <Button
-            variant={filter === 'active' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('active')}
-          >
-            Active
-          </Button>
-          <Button
-            variant={filter === 'completed' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('completed')}
-          >
-            Completed
-          </Button>
-          {uniqueCategories.length > 0 && (
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-32 h-8">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {uniqueCategories.map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* View Mode Toggle */}
+          <div className="flex border rounded-lg overflow-hidden">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className="rounded-none gap-1"
+            >
+              <List className="w-4 h-4" />
+              List
+            </Button>
+            <Button
+              variant={viewMode === 'calendar' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('calendar')}
+              className="rounded-none gap-1"
+            >
+              <CalendarDays className="w-4 h-4" />
+              Calendar
+            </Button>
+          </div>
+          
+          {viewMode === 'list' && (
+            <>
+              <Button
+                variant={filter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('all')}
+              >
+                All
+              </Button>
+              <Button
+                variant={filter === 'active' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('active')}
+              >
+                Active
+              </Button>
+              <Button
+                variant={filter === 'completed' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('completed')}
+              >
+                Completed
+              </Button>
+              {uniqueCategories.length > 0 && (
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="w-32 h-8">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {uniqueCategories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Tasks List */}
-      {filteredTasks.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">
-            {filter === 'all' ? 'No tasks yet' : `No ${filter} tasks`}
-          </h3>
-          <p className="text-muted-foreground">
-            {filter === 'all' 
-              ? 'Add your first task or use AI to generate suggestions' 
-              : 'Try a different filter'}
-          </p>
-        </Card>
+      {/* Content Area */}
+      {viewMode === 'calendar' ? (
+        <TaskCalendarView 
+          tasks={tasks} 
+          onToggleTask={toggleTask}
+        />
       ) : (
-        <div className="space-y-2">
-          <AnimatePresence>
-            {filteredTasks.map((task, i) => (
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ delay: i * 0.02 }}
-              >
-                <Card className={cn(
-                  "p-4 flex items-center gap-3 transition-all",
-                  task.completed && "opacity-60"
-                )}>
-                  <button
-                    onClick={() => toggleTask(task.id, task.completed)}
-                    className="flex-shrink-0"
-                  >
-                    {task.completed ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
-                    )}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <span className={cn(
-                      "block truncate",
-                      task.completed && "line-through text-muted-foreground"
-                    )}>
-                      {task.title}
-                    </span>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {task.category && task.category !== 'General' && (
-                        <Badge variant="outline" className="text-xs">
-                          {task.category}
+        <>
+          {/* Tasks List */}
+          {filteredTasks.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">
+                {filter === 'all' ? 'No tasks yet' : `No ${filter} tasks`}
+              </h3>
+              <p className="text-muted-foreground">
+                {filter === 'all' 
+                  ? 'Add your first task or use AI to generate suggestions' 
+                  : 'Try a different filter'}
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              <AnimatePresence>
+                {filteredTasks.map((task, i) => {
+                  const urgency = getTaskUrgency(task);
+                  
+                  return (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ delay: i * 0.02 }}
+                    >
+                      <Card className={cn(
+                        "p-4 flex items-center gap-3 transition-all",
+                        task.completed && "opacity-60",
+                        urgency === 'overdue' && "border-ruby/50 bg-ruby/5",
+                        urgency === 'imminent' && "border-amber/50 bg-amber/5 animate-pulse",
+                        urgency === 'soon' && "border-amber/30 bg-amber/5"
+                      )}>
+                        <button
+                          onClick={() => toggleTask(task.id, task.completed)}
+                          className="flex-shrink-0"
+                        >
+                          {task.completed ? (
+                            <CheckCircle2 className="w-5 h-5 text-emerald" />
+                          ) : (
+                            <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
+                          )}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "block truncate",
+                              task.completed && "line-through text-muted-foreground"
+                            )}>
+                              {task.title}
+                            </span>
+                            {urgency === 'overdue' && (
+                              <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                            )}
+                            {urgency === 'imminent' && (
+                              <Badge className="text-xs bg-amber text-amber-foreground animate-pulse">Due Soon!</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {task.category && task.category !== 'General' && (
+                              <Badge variant="outline" className="text-xs">
+                                {task.category}
+                              </Badge>
+                            )}
+                            {task.due_date && (
+                              <span className={cn(
+                                "text-xs flex items-center gap-1",
+                                urgency === 'overdue' ? "text-ruby" : "text-muted-foreground"
+                              )}>
+                                <Clock className="w-3 h-3" />
+                                {formatTaskDateTime(task.due_date)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
+                          {task.priority}
                         </Badge>
-                      )}
-                      {task.due_date && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {format(new Date(task.due_date), 'MMM d, yyyy h:mm a')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
-                    {task.priority}
-                  </Badge>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => deleteTask(task.id)} 
-                    className="text-ruby hover:text-ruby flex-shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </Card>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => deleteTask(task.id)} 
+                          className="text-ruby hover:text-ruby flex-shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
