@@ -54,6 +54,7 @@ export default function AITaskManager() {
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [category, setCategory] = useState('General');
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
@@ -105,13 +106,23 @@ export default function AITaskManager() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Combine date and time if both are provided
+      let fullDueDate: string | null = null;
+      if (dueDate) {
+        if (dueTime) {
+          fullDueDate = `${dueDate}T${dueTime}:00`;
+        } else {
+          fullDueDate = `${dueDate}T23:59:00`;
+        }
+      }
+
       const { data, error } = await supabase
         .from('tasks')
         .insert({
           title: newTask.trim(),
           priority,
           category,
-          due_date: dueDate || null,
+          due_date: fullDueDate,
           user_id: user.id,
           completed: false,
         })
@@ -130,6 +141,7 @@ export default function AITaskManager() {
       setTasks([newTaskData, ...tasks]);
       setNewTask('');
       setDueDate('');
+      setDueTime('');
       setPriority('medium');
       setCategory('General');
       toast.success('Task added');
@@ -185,25 +197,42 @@ export default function AITaskManager() {
     setSuggestions([]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('ai-task-suggest', {
-        body: { prompt: aiPrompt }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please log in to use AI suggestions');
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-task-suggest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ prompt: aiPrompt }),
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        if (response.status === 429) {
+          toast.error('Rate limit exceeded. Please try again later.');
+          return;
+        }
+        if (response.status === 402) {
+          toast.error('Please add credits to your workspace.');
+          return;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate suggestions');
+      }
 
+      const data = await response.json();
       if (data?.suggestions) {
         setSuggestions(data.suggestions);
         toast.success('AI generated task suggestions!');
       }
     } catch (error: any) {
       console.error('Error generating suggestions:', error);
-      if (error?.message?.includes('429') || error?.status === 429) {
-        toast.error('Rate limit exceeded. Please try again later.');
-      } else if (error?.message?.includes('402') || error?.status === 402) {
-        toast.error('Please add credits to your workspace.');
-      } else {
-        toast.error('Failed to generate suggestions');
-      }
+      toast.error(error?.message || 'Failed to generate suggestions');
     } finally {
       setIsGenerating(false);
     }
@@ -416,6 +445,13 @@ export default function AITaskManager() {
               onChange={(e) => setDueDate(e.target.value)}
               className="w-36"
             />
+            <Input
+              type="time"
+              value={dueTime}
+              onChange={(e) => setDueTime(e.target.value)}
+              className="w-28"
+              placeholder="Time"
+            />
             <Button onClick={addTask} disabled={isAdding} className="gap-2">
               <Plus className="w-4 h-4" />
               Add
@@ -534,7 +570,7 @@ export default function AITaskManager() {
                       {task.due_date && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {format(new Date(task.due_date), 'MMM d, yyyy')}
+                          {format(new Date(task.due_date), 'MMM d, yyyy h:mm a')}
                         </span>
                       )}
                     </div>
