@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { GraduationCap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { GraduationCap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -19,6 +20,8 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -42,6 +45,39 @@ export default function Auth() {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      emailSchema.parse(formData.email);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+        return;
+      }
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: `${window.location.origin}/dashboard`,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success('Password reset email sent! Check your inbox.');
+      setIsForgotPassword(false);
+    } catch (error) {
+      toast.error('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +112,13 @@ export default function Auth() {
             toast.error(error.message);
           }
           return;
+        }
+
+        // If remember me is checked, session persists longer (handled by Supabase automatically)
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          localStorage.removeItem('rememberMe');
         }
 
         toast.success('Welcome back!');
@@ -178,16 +221,67 @@ export default function Auth() {
 
           <div className="text-center mb-8">
             <h2 className="text-2xl font-display font-bold mb-2">
-              {isLogin ? 'Welcome back' : 'Create account'}
+              {isForgotPassword 
+                ? 'Reset password' 
+                : isLogin 
+                  ? 'Welcome back' 
+                  : 'Create account'}
             </h2>
             <p className="text-muted-foreground">
-              {isLogin
-                ? 'Sign in to continue your learning journey'
-                : 'Start your academic excellence journey'}
+              {isForgotPassword
+                ? 'Enter your email to receive a reset link'
+                : isLogin
+                  ? 'Sign in to continue your learning journey'
+                  : 'Start your academic excellence journey'}
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Forgot Password Form */}
+          {isForgotPassword ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    placeholder="you@ossm.edu"
+                    className="pl-10 h-12"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    disabled={isLoading}
+                    maxLength={255}
+                  />
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full h-12 bg-primary hover:bg-navy-light" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    Send Reset Link
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+
+              <button
+                type="button"
+                className="w-full flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setIsForgotPassword(false)}
+                disabled={isLoading}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to sign in
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
@@ -248,6 +342,30 @@ export default function Auth() {
               </div>
             </div>
 
+            {/* Remember Me & Forgot Password */}
+            {isLogin && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="remember" 
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                  />
+                  <Label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer">
+                    Remember me
+                  </Label>
+                </div>
+                <button
+                  type="button"
+                  className="text-sm text-primary hover:underline"
+                  onClick={() => setIsForgotPassword(true)}
+                  disabled={isLoading}
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
             <Button type="submit" className="w-full h-12 bg-primary hover:bg-navy-light" disabled={isLoading}>
               {isLoading ? (
                 <>
@@ -262,18 +380,21 @@ export default function Auth() {
               )}
             </Button>
           </form>
+          )}
 
-          <p className="text-center mt-6 text-sm text-muted-foreground">
-            {isLogin ? "Don't have an account? " : 'Already have an account? '}
-            <button
-              type="button"
-              className="text-primary font-medium hover:underline"
-              onClick={() => setIsLogin(!isLogin)}
-              disabled={isLoading}
-            >
-              {isLogin ? 'Sign up' : 'Sign in'}
-            </button>
-          </p>
+          {!isForgotPassword && (
+            <p className="text-center mt-6 text-sm text-muted-foreground">
+              {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              <button
+                type="button"
+                className="text-primary font-medium hover:underline"
+                onClick={() => setIsLogin(!isLogin)}
+                disabled={isLoading}
+              >
+                {isLogin ? 'Sign up' : 'Sign in'}
+              </button>
+            </p>
+          )}
         </motion.div>
       </div>
     </div>
