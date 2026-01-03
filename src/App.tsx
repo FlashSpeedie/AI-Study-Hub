@@ -16,7 +16,7 @@ import AIAssistant from "./pages/AIAssistant";
 import AIDetector from "./pages/AIDetector";
 import QuizGenerator from "./pages/QuizGenerator";
 import Pomodoro from "./pages/Pomodoro";
-import DormTasks from "./pages/DormTasks";
+import AITaskManager from "./pages/AITaskManager";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,7 +65,7 @@ function AppRoutes() {
       <Route path="/ai-detector" element={<ProtectedRoute session={session}><AIDetector /></ProtectedRoute>} />
       <Route path="/quiz" element={<ProtectedRoute session={session}><QuizGenerator /></ProtectedRoute>} />
       <Route path="/pomodoro" element={<ProtectedRoute session={session}><Pomodoro /></ProtectedRoute>} />
-      <Route path="/tasks" element={<ProtectedRoute session={session}><DormTasks /></ProtectedRoute>} />
+      <Route path="/tasks" element={<ProtectedRoute session={session}><AITaskManager /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

@@ -1,0 +1,508 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Sparkles, 
+  Plus, 
+  Trash2, 
+  Calendar, 
+  Flag, 
+  CheckCircle2, 
+  Circle, 
+  Wand2,
+  Loader2,
+  Send,
+  RefreshCw
+} from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+
+interface Task {
+  id: string;
+  title: string;
+  completed: boolean;
+  priority: 'low' | 'medium' | 'high';
+  due_date: string | null;
+  created_at: string;
+}
+
+type SuggestionTask = {
+  title: string;
+  priority: 'low' | 'medium' | 'high';
+  category: string;
+};
+
+export default function AITaskManager() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTask, setNewTask] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [dueDate, setDueDate] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestionTask[]>([]);
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setTasks((data || []).map(t => ({
+        ...t,
+        priority: t.priority as 'low' | 'medium' | 'high',
+        due_date: t.due_date ?? null,
+      })));
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      toast.error('Failed to load tasks');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const addTask = async () => {
+    if (!newTask.trim()) {
+      toast.error('Please enter a task');
+      return;
+    }
+
+    setIsAdding(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          title: newTask.trim(),
+          priority,
+          due_date: dueDate || null,
+          user_id: user.id,
+          completed: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newTaskData: Task = {
+        ...data,
+        priority: data.priority as 'low' | 'medium' | 'high',
+        due_date: data.due_date ?? null,
+      };
+
+      setTasks([newTaskData, ...tasks]);
+      setNewTask('');
+      setDueDate('');
+      setPriority('medium');
+      toast.success('Task added');
+    } catch (error) {
+      console.error('Error adding task:', error);
+      toast.error('Failed to add task');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const toggleTask = async (id: string, completed: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ completed: !completed })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setTasks(tasks.map(t => t.id === id ? { ...t, completed: !completed } : t));
+      toast.success(completed ? 'Task marked incomplete' : 'Task completed!');
+    } catch (error) {
+      console.error('Error toggling task:', error);
+      toast.error('Failed to update task');
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setTasks(tasks.filter(t => t.id !== id));
+      toast.success('Task deleted');
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task');
+    }
+  };
+
+  const generateAISuggestions = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('Please describe what tasks you need help with');
+      return;
+    }
+
+    setIsGenerating(true);
+    setSuggestions([]);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-task-suggest', {
+        body: { prompt: aiPrompt }
+      });
+
+      if (error) throw error;
+
+      if (data?.suggestions) {
+        setSuggestions(data.suggestions);
+        toast.success('AI generated task suggestions!');
+      }
+    } catch (error: any) {
+      console.error('Error generating suggestions:', error);
+      if (error?.message?.includes('429') || error?.status === 429) {
+        toast.error('Rate limit exceeded. Please try again later.');
+      } else if (error?.message?.includes('402') || error?.status === 402) {
+        toast.error('Please add credits to your workspace.');
+      } else {
+        toast.error('Failed to generate suggestions');
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const addSuggestion = async (suggestion: SuggestionTask) => {
+    setIsAdding(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          title: suggestion.title,
+          priority: suggestion.priority,
+          user_id: user.id,
+          completed: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newTaskData: Task = {
+        ...data,
+        priority: data.priority as 'low' | 'medium' | 'high',
+        due_date: data.due_date ?? null,
+      };
+
+      setTasks([newTaskData, ...tasks]);
+      setSuggestions(suggestions.filter(s => s.title !== suggestion.title));
+      toast.success('Task added from suggestion');
+    } catch (error) {
+      console.error('Error adding suggestion:', error);
+      toast.error('Failed to add task');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const filteredTasks = tasks.filter(task => {
+    if (filter === 'active') return !task.completed;
+    if (filter === 'completed') return task.completed;
+    return true;
+  });
+
+  const completedCount = tasks.filter(t => t.completed).length;
+
+  const priorityColors = {
+    low: 'bg-sky/20 text-sky border-sky/30',
+    medium: 'bg-amber/20 text-amber border-amber/30',
+    high: 'bg-ruby/20 text-ruby border-ruby/30',
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto animate-in">
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Sparkles className="w-8 h-8 text-primary" />
+          <h1 className="text-3xl font-display font-bold">AI Task Manager</h1>
+        </div>
+        <p className="text-muted-foreground">Intelligent task management powered by AI</p>
+      </div>
+
+      {/* AI Suggestions Section */}
+      <Card className="p-5 mb-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+        <div className="flex items-center gap-2 mb-4">
+          <Wand2 className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">AI Task Suggestions</h3>
+        </div>
+        <div className="flex gap-2 mb-4">
+          <Textarea
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder="Describe what you need to accomplish... (e.g., 'I need to prepare for my chemistry exam next week')"
+            className="min-h-[80px] resize-none"
+          />
+        </div>
+        <Button 
+          onClick={generateAISuggestions} 
+          disabled={isGenerating}
+          className="gap-2"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Generate Suggestions
+            </>
+          )}
+        </Button>
+
+        {/* AI Suggestions */}
+        <AnimatePresence>
+          {suggestions.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-4 space-y-2"
+            >
+              <p className="text-sm text-muted-foreground">Click to add:</p>
+              {suggestions.map((suggestion, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                >
+                  <button
+                    onClick={() => addSuggestion(suggestion)}
+                    disabled={isAdding}
+                    className="w-full text-left p-3 rounded-lg bg-background/50 hover:bg-background border border-border hover:border-primary/30 transition-all flex items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Plus className="w-4 h-4 text-primary" />
+                      <span>{suggestion.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {suggestion.category}
+                      </Badge>
+                      <Badge className={cn('text-xs', priorityColors[suggestion.priority])}>
+                        {suggestion.priority}
+                      </Badge>
+                    </div>
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Card>
+
+      {/* Add Task */}
+      <Card className="p-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Input
+            value={newTask}
+            onChange={(e) => setNewTask(e.target.value)}
+            placeholder="Add a new task..."
+            onKeyDown={(e) => e.key === 'Enter' && addTask()}
+            className="flex-1"
+          />
+          <div className="flex gap-2">
+            <Select value={priority} onValueChange={(v: 'low' | 'medium' | 'high') => setPriority(v)}>
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">
+                  <div className="flex items-center gap-2">
+                    <Flag className="w-3 h-3 text-sky" />
+                    Low
+                  </div>
+                </SelectItem>
+                <SelectItem value="medium">
+                  <div className="flex items-center gap-2">
+                    <Flag className="w-3 h-3 text-amber" />
+                    Medium
+                  </div>
+                </SelectItem>
+                <SelectItem value="high">
+                  <div className="flex items-center gap-2">
+                    <Flag className="w-3 h-3 text-ruby" />
+                    High
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-36"
+            />
+            <Button onClick={addTask} disabled={isAdding} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Progress & Filter */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+        {tasks.length > 0 && (
+          <div className="flex-1 w-full sm:max-w-xs">
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-muted-foreground">Progress</span>
+              <span className="font-medium">{completedCount}/{tasks.length}</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <motion.div 
+                className="h-full rounded-full bg-emerald"
+                initial={{ width: 0 }}
+                animate={{ width: `${tasks.length > 0 ? (completedCount / tasks.length) * 100 : 0}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button
+            variant={filter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('all')}
+          >
+            All
+          </Button>
+          <Button
+            variant={filter === 'active' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('active')}
+          >
+            Active
+          </Button>
+          <Button
+            variant={filter === 'completed' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('completed')}
+          >
+            Completed
+          </Button>
+        </div>
+      </div>
+
+      {/* Tasks List */}
+      {filteredTasks.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">
+            {filter === 'all' ? 'No tasks yet' : `No ${filter} tasks`}
+          </h3>
+          <p className="text-muted-foreground">
+            {filter === 'all' 
+              ? 'Add your first task or use AI to generate suggestions' 
+              : 'Try a different filter'}
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          <AnimatePresence>
+            {filteredTasks.map((task, i) => (
+              <motion.div
+                key={task.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ delay: i * 0.02 }}
+              >
+                <Card className={cn(
+                  "p-4 flex items-center gap-3 transition-all",
+                  task.completed && "opacity-60"
+                )}>
+                  <button
+                    onClick={() => toggleTask(task.id, task.completed)}
+                    className="flex-shrink-0"
+                  >
+                    {task.completed ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <span className={cn(
+                      "block truncate",
+                      task.completed && "line-through text-muted-foreground"
+                    )}>
+                      {task.title}
+                    </span>
+                    {task.due_date && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                        <Calendar className="w-3 h-3" />
+                        {format(new Date(task.due_date), 'MMM d, yyyy')}
+                      </span>
+                    )}
+                  </div>
+                  <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
+                    {task.priority}
+                  </Badge>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => deleteTask(task.id)} 
+                    className="text-ruby hover:text-ruby flex-shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
