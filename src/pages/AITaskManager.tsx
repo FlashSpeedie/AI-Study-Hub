@@ -197,42 +197,39 @@ export default function AITaskManager() {
     setSuggestions([]);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         toast.error('Please log in to use AI suggestions');
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-task-suggest`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ prompt: aiPrompt }),
+      const { data, error } = await supabase.functions.invoke('ai-task-suggest', {
+        body: { prompt: aiPrompt }
       });
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          toast.error('Rate limit exceeded. Please try again later.');
-          return;
-        }
-        if (response.status === 402) {
-          toast.error('Please add credits to your workspace.');
-          return;
-        }
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to generate suggestions');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
       }
 
-      const data = await response.json();
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          toast.error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          toast.error('Please add credits to your workspace.');
+        } else {
+          toast.error(data.error);
+        }
+        return;
+      }
+
       if (data?.suggestions) {
         setSuggestions(data.suggestions);
         toast.success('AI generated task suggestions!');
       }
     } catch (error: any) {
       console.error('Error generating suggestions:', error);
-      toast.error(error?.message || 'Failed to generate suggestions');
+      toast.error('Failed to generate suggestions');
     } finally {
       setIsGenerating(false);
     }
