@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -38,9 +37,13 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { format, isAfter, isBefore, parseISO, differenceInMinutes } from 'date-fns';
+import { format, isBefore, parseISO, differenceInMinutes } from 'date-fns';
 import TaskCalendarView from '@/components/tasks/TaskCalendarView';
 import TaskTimePicker from '@/components/tasks/TaskTimePicker';
+import TaskNotesSubtasks, { Subtask } from '@/components/tasks/TaskNotesSubtasks';
+import SmartScheduler from '@/components/tasks/SmartScheduler';
+import DurationPicker from '@/components/tasks/DurationPicker';
+import CalendarExport from '@/components/tasks/CalendarExport';
 import { useTaskNotifications } from '@/hooks/useTaskNotifications';
 
 interface Task {
@@ -51,6 +54,9 @@ interface Task {
   due_date: string | null;
   category: string;
   created_at: string;
+  notes?: string;
+  subtasks?: Subtask[];
+  duration?: number;
 }
 
 type SuggestionTask = {
@@ -58,6 +64,8 @@ type SuggestionTask = {
   priority: 'low' | 'medium' | 'high';
   category: string;
   suggested_due_date: string;
+  suggested_time?: string;
+  estimated_duration?: number;
 };
 
 export default function AITaskManager() {
@@ -67,6 +75,7 @@ export default function AITaskManager() {
   const [category, setCategory] = useState('General');
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
+  const [duration, setDuration] = useState(30);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
@@ -75,6 +84,7 @@ export default function AITaskManager() {
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const categories = ['General', 'Study', 'Review', 'Practice', 'Research', 'Writing', 'Organization', 'Exam Prep', 'Project', 'Reading', 'Other'];
 
@@ -92,7 +102,6 @@ export default function AITaskManager() {
 
   useEffect(() => {
     fetchTasks();
-    // Request notification permission on mount
     requestPermission();
   }, []);
 
@@ -113,6 +122,9 @@ export default function AITaskManager() {
         priority: t.priority as 'low' | 'medium' | 'high',
         due_date: t.due_date ?? null,
         category: t.category ?? 'General',
+        notes: (t as any).notes ?? '',
+        subtasks: (t as any).subtasks ?? [],
+        duration: (t as any).duration ?? 30,
       })));
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -120,6 +132,15 @@ export default function AITaskManager() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Get full due date for smart scheduler
+  const getFullDueDate = () => {
+    if (!dueDate) return null;
+    if (dueTime) {
+      return `${dueDate}T${dueTime}:00`;
+    }
+    return `${dueDate}T23:59:00`;
   };
 
   const addTask = async () => {
@@ -133,14 +154,9 @@ export default function AITaskManager() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Combine date and time if both are provided
       let fullDueDate: string | null = null;
       if (dueDate) {
-        if (dueTime) {
-          fullDueDate = `${dueDate}T${dueTime}:00`;
-        } else {
-          fullDueDate = `${dueDate}T23:59:00`;
-        }
+        fullDueDate = dueTime ? `${dueDate}T${dueTime}:00` : `${dueDate}T23:59:00`;
       }
 
       const { data, error } = await supabase
@@ -152,7 +168,10 @@ export default function AITaskManager() {
           due_date: fullDueDate,
           user_id: user.id,
           completed: false,
-        })
+          notes: '',
+          subtasks: [],
+          duration,
+        } as any)
         .select()
         .single();
 
@@ -163,6 +182,9 @@ export default function AITaskManager() {
         priority: data.priority as 'low' | 'medium' | 'high',
         due_date: data.due_date ?? null,
         category: data.category ?? 'General',
+        notes: (data as any).notes ?? '',
+        subtasks: (data as any).subtasks ?? [],
+        duration: (data as any).duration ?? 30,
       };
 
       setTasks([newTaskData, ...tasks]);
@@ -171,6 +193,7 @@ export default function AITaskManager() {
       setDueTime('');
       setPriority('medium');
       setCategory('General');
+      setDuration(30);
       toast.success('Task added');
     } catch (error) {
       console.error('Error adding task:', error);
@@ -211,6 +234,24 @@ export default function AITaskManager() {
     } catch (error) {
       console.error('Error deleting task:', error);
       toast.error('Failed to delete task');
+    }
+  };
+
+  const updateTaskNotesSubtasks = async (taskId: string, notes: string, subtasks: Subtask[]) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ notes, subtasks } as any)
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      setTasks(tasks.map(t => 
+        t.id === taskId ? { ...t, notes, subtasks } : t
+      ));
+    } catch (error) {
+      console.error('Error updating task:', error);
+      toast.error('Failed to update task');
     }
   };
 
@@ -277,7 +318,10 @@ export default function AITaskManager() {
           due_date: suggestion.suggested_due_date || null,
           user_id: user.id,
           completed: false,
-        })
+          notes: '',
+          subtasks: [],
+          duration: 30,
+        } as any)
         .select()
         .single();
 
@@ -288,6 +332,9 @@ export default function AITaskManager() {
         priority: data.priority as 'low' | 'medium' | 'high',
         due_date: data.due_date ?? null,
         category: data.category ?? 'General',
+        notes: '',
+        subtasks: [],
+        duration: 30,
       };
 
       setTasks([newTaskData, ...tasks]);
@@ -312,7 +359,7 @@ export default function AITaskManager() {
     if (t.completed || !t.due_date) return false;
     const dueDate = parseISO(t.due_date);
     const diff = differenceInMinutes(dueDate, now);
-    return diff > 0 && diff <= 60; // Due within the next hour
+    return diff > 0 && diff <= 60;
   });
 
   const filteredTasks = tasks.filter(task => {
@@ -335,7 +382,6 @@ export default function AITaskManager() {
     const date = parseISO(dueDate);
     const hours = date.getHours();
     const minutes = date.getMinutes();
-    // If it's 23:59, just show date
     if (hours === 23 && minutes === 59) {
       return format(date, 'MMM d, yyyy');
     }
@@ -362,7 +408,7 @@ export default function AITaskManager() {
 
   return (
     <div className="max-w-5xl mx-auto animate-in">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <Sparkles className="w-8 h-8 text-primary" />
@@ -371,36 +417,39 @@ export default function AITaskManager() {
           <p className="text-muted-foreground">Intelligent task management powered by AI</p>
         </div>
         
-        {/* Notification Toggle */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={notificationsEnabled ? "default" : "outline"}
-              size="icon"
-              onClick={() => {
-                if (!permissionGranted) {
-                  requestPermission();
-                }
-                toggleNotifications();
-              }}
-              className="relative"
-            >
-              {notificationsEnabled ? (
-                <Bell className="w-4 h-4" />
-              ) : (
-                <BellOff className="w-4 h-4" />
-              )}
-              {notificationsEnabled && upcomingSoonTasks.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-ruby text-white text-xs rounded-full flex items-center justify-center">
-                  {upcomingSoonTasks.length}
-                </span>
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {notificationsEnabled ? 'Notifications enabled (5 min reminder)' : 'Enable notifications'}
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-2">
+          <CalendarExport tasks={tasks} />
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={notificationsEnabled ? "default" : "outline"}
+                size="icon"
+                onClick={() => {
+                  if (!permissionGranted) {
+                    requestPermission();
+                  }
+                  toggleNotifications();
+                }}
+                className="relative"
+              >
+                {notificationsEnabled ? (
+                  <Bell className="w-4 h-4" />
+                ) : (
+                  <BellOff className="w-4 h-4" />
+                )}
+                {notificationsEnabled && upcomingSoonTasks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-ruby text-white text-xs rounded-full flex items-center justify-center">
+                    {upcomingSoonTasks.length}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {notificationsEnabled ? 'Notifications enabled (5 min reminder)' : 'Enable notifications'}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {/* Overdue Tasks Alert */}
@@ -465,7 +514,6 @@ export default function AITaskManager() {
           )}
         </Button>
 
-        {/* AI Suggestions */}
         <AnimatePresence>
           {suggestions.length > 0 && (
             <motion.div
@@ -502,9 +550,22 @@ export default function AITaskManager() {
                       </div>
                     </div>
                     {suggestion.suggested_due_date && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground ml-7">
-                        <Calendar className="w-3 h-3" />
-                        <span>Suggested: {format(new Date(suggestion.suggested_due_date), 'MMM d, yyyy')}</span>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground ml-7 flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {format(new Date(suggestion.suggested_due_date), 'MMM d, yyyy')}
+                        </span>
+                        {suggestion.suggested_time && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {suggestion.suggested_time}
+                          </span>
+                        )}
+                        {suggestion.estimated_duration && (
+                          <span className="text-muted-foreground">
+                            ({suggestion.estimated_duration} min)
+                          </span>
+                        )}
                       </div>
                     )}
                   </button>
@@ -572,11 +633,25 @@ export default function AITaskManager() {
               onChange={setDueTime}
               className="w-32"
             />
+            <DurationPicker
+              value={duration}
+              onChange={setDuration}
+              className="w-32"
+            />
             <Button onClick={addTask} disabled={isAdding} className="gap-2">
               <Plus className="w-4 h-4" />
               Add Task
             </Button>
           </div>
+          
+          {/* Smart Scheduler */}
+          {dueDate && (
+            <SmartScheduler
+              tasks={tasks}
+              newTaskDate={getFullDueDate()}
+              newTaskDuration={duration}
+            />
+          )}
         </div>
       </Card>
 
@@ -599,7 +674,6 @@ export default function AITaskManager() {
           </div>
         )}
         <div className="flex flex-wrap gap-2 items-center">
-          {/* View Mode Toggle */}
           <div className="flex border rounded-lg overflow-hidden">
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
@@ -670,7 +744,6 @@ export default function AITaskManager() {
         />
       ) : (
         <>
-          {/* Tasks List */}
           {filteredTasks.length === 0 ? (
             <Card className="p-8 text-center">
               <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -688,6 +761,10 @@ export default function AITaskManager() {
               <AnimatePresence>
                 {filteredTasks.map((task, i) => {
                   const urgency = getTaskUrgency(task);
+                  const isExpanded = expandedTaskId === task.id;
+                  const subtaskProgress = task.subtasks && task.subtasks.length > 0
+                    ? task.subtasks.filter(s => s.completed).length / task.subtasks.length
+                    : null;
                   
                   return (
                     <motion.div
@@ -698,65 +775,87 @@ export default function AITaskManager() {
                       transition={{ delay: i * 0.02 }}
                     >
                       <Card className={cn(
-                        "p-4 flex items-center gap-3 transition-all",
+                        "p-4 transition-all",
                         task.completed && "opacity-60",
                         urgency === 'overdue' && "border-ruby/50 bg-ruby/5",
                         urgency === 'imminent' && "border-amber/50 bg-amber/5 animate-pulse",
                         urgency === 'soon' && "border-amber/30 bg-amber/5"
                       )}>
-                        <button
-                          onClick={() => toggleTask(task.id, task.completed)}
-                          className="flex-shrink-0"
-                        >
-                          {task.completed ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
-                          )}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={cn(
-                              "block truncate",
-                              task.completed && "line-through text-muted-foreground"
-                            )}>
-                              {task.title}
-                            </span>
-                            {urgency === 'overdue' && (
-                              <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleTask(task.id, task.completed)}
+                            className="flex-shrink-0"
+                          >
+                            {task.completed ? (
+                              <CheckCircle2 className="w-5 h-5 text-emerald" />
+                            ) : (
+                              <Circle className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
                             )}
-                            {urgency === 'imminent' && (
-                              <Badge className="text-xs bg-amber text-amber-foreground animate-pulse">Due Soon!</Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {task.category && task.category !== 'General' && (
-                              <Badge variant="outline" className="text-xs">
-                                {task.category}
-                              </Badge>
-                            )}
-                            {task.due_date && (
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
                               <span className={cn(
-                                "text-xs flex items-center gap-1",
-                                urgency === 'overdue' ? "text-ruby" : "text-muted-foreground"
+                                "block truncate",
+                                task.completed && "line-through text-muted-foreground"
                               )}>
-                                <Clock className="w-3 h-3" />
-                                {formatTaskDateTime(task.due_date)}
+                                {task.title}
                               </span>
-                            )}
+                              {urgency === 'overdue' && (
+                                <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                              )}
+                              {urgency === 'imminent' && (
+                                <Badge className="text-xs bg-amber text-amber-foreground animate-pulse">Due Soon!</Badge>
+                              )}
+                              {subtaskProgress !== null && (
+                                <Badge variant="outline" className="text-xs">
+                                  {Math.round(subtaskProgress * 100)}% subtasks
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {task.category && task.category !== 'General' && (
+                                <Badge variant="outline" className="text-xs">
+                                  {task.category}
+                                </Badge>
+                              )}
+                              {task.due_date && (
+                                <span className={cn(
+                                  "text-xs flex items-center gap-1",
+                                  urgency === 'overdue' ? "text-ruby" : "text-muted-foreground"
+                                )}>
+                                  <Clock className="w-3 h-3" />
+                                  {formatTaskDateTime(task.due_date)}
+                                </span>
+                              )}
+                              {task.duration && task.duration !== 30 && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({task.duration} min)
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
+                            {task.priority}
+                          </Badge>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => deleteTask(task.id)} 
+                            className="text-ruby hover:text-ruby flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
-                        <Badge className={cn('text-xs', priorityColors[task.priority as keyof typeof priorityColors])}>
-                          {task.priority}
-                        </Badge>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => deleteTask(task.id)} 
-                          className="text-ruby hover:text-ruby flex-shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        
+                        {/* Notes & Subtasks */}
+                        <TaskNotesSubtasks
+                          notes={task.notes || ''}
+                          subtasks={task.subtasks || []}
+                          onNotesChange={(notes) => updateTaskNotesSubtasks(task.id, notes, task.subtasks || [])}
+                          onSubtasksChange={(subtasks) => updateTaskNotesSubtasks(task.id, task.notes || '', subtasks)}
+                          isExpanded={isExpanded}
+                          onToggleExpand={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                        />
                       </Card>
                     </motion.div>
                   );

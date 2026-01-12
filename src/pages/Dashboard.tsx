@@ -1,27 +1,53 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   BookOpen, 
-  TrendingUp, 
   Clock, 
   CheckCircle,
-  Calendar,
   Target,
-  Award
+  FileText,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { useStore } from '@/store/useStore';
 import { 
   calculateSubjectGrade, 
-  calculateSemesterGPA,
-  calculateOverallGPA,
   getLetterGrade, 
-  getGradeColor,
-  percentageToGPA
+  getGradeColor
 } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Dashboard() {
   const { user, academicYears, selectedYearId, selectedSemesterId, tasks } = useStore();
+  const [username, setUsername] = useState<string | null>(null);
+
+  // Fetch username from profile
+  useEffect(() => {
+    const fetchUsername = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        // First try user metadata
+        if (authUser.user_metadata?.username) {
+          setUsername(authUser.user_metadata.username);
+          return;
+        }
+        // Then try profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', authUser.id)
+          .single();
+        if (profile?.username) {
+          setUsername(profile.username);
+        } else {
+          // Fallback to email username
+          setUsername(authUser.email?.split('@')[0] || 'Student');
+        }
+      }
+    };
+    fetchUsername();
+  }, []);
 
   const currentData = useMemo(() => {
     const year = academicYears.find(y => y.id === selectedYearId);
@@ -32,12 +58,6 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     const subjects = currentData.semester?.subjects || [];
     const totalSubjects = subjects.length;
-    
-    // Calculate semester GPA
-    const semesterGPA = currentData.semester ? calculateSemesterGPA(currentData.semester) : 0;
-    
-    // Calculate overall GPA across all years
-    const overallGPA = calculateOverallGPA(academicYears);
     
     // Calculate average percentage
     let totalGrade = 0;
@@ -54,49 +74,41 @@ export default function Dashboard() {
     const avgPercentage = gradedSubjects > 0 ? totalGrade / gradedSubjects : 0;
     const completedTasks = tasks.filter(t => t.completed).length;
     const pendingTasks = tasks.filter(t => !t.completed).length;
+    const totalTasks = tasks.length;
 
     return {
       totalSubjects,
       avgPercentage: avgPercentage.toFixed(1),
       avgLetter: getLetterGrade(avgPercentage),
-      semesterGPA: semesterGPA.toFixed(2),
-      overallGPA: overallGPA.toFixed(2),
       completedTasks,
       pendingTasks,
+      totalTasks,
     };
-  }, [currentData.semester, tasks, academicYears]);
+  }, [currentData.semester, tasks]);
 
   const recentSubjects = useMemo(() => {
     const subjects = currentData.semester?.subjects || [];
     return subjects.slice(0, 6).map(subject => ({
       ...subject,
       grade: calculateSubjectGrade(subject),
-      gpa: percentageToGPA(calculateSubjectGrade(subject)),
       hasGrades: subject.categories.some(c => c.assignments.length > 0),
     }));
   }, [currentData.semester]);
 
   const statCards = [
     {
-      title: 'Semester GPA',
-      value: stats.semesterGPA,
-      subtitle: `${stats.avgPercentage}% average`,
-      icon: Award,
+      title: 'Average Grade',
+      value: `${stats.avgPercentage}%`,
+      subtitle: stats.avgLetter,
+      icon: Target,
       color: 'bg-emerald/10 text-emerald',
-    },
-    {
-      title: 'Cumulative GPA',
-      value: stats.overallGPA,
-      subtitle: 'All semesters',
-      icon: TrendingUp,
-      color: 'bg-sky/10 text-sky',
     },
     {
       title: 'Active Subjects',
       value: stats.totalSubjects.toString(),
       subtitle: currentData.semester?.name || 'No semester selected',
       icon: BookOpen,
-      color: 'bg-amber/10 text-amber',
+      color: 'bg-sky/10 text-sky',
     },
     {
       title: 'Tasks Completed',
@@ -105,6 +117,19 @@ export default function Dashboard() {
       icon: CheckCircle,
       color: 'bg-primary/10 text-primary',
     },
+    {
+      title: 'Total Tasks',
+      value: stats.totalTasks.toString(),
+      subtitle: 'All time',
+      icon: Sparkles,
+      color: 'bg-amber/10 text-amber',
+    },
+  ];
+
+  const quickLinks = [
+    { title: 'AI Notes', description: 'Take smart notes with AI assistance', icon: FileText, path: '/notes', color: 'from-primary/10 to-sky/10' },
+    { title: 'Flashcards', description: 'Create and study flashcard decks', icon: Layers, path: '/flashcards', color: 'from-emerald/10 to-primary/10' },
+    { title: 'Final Grade Calc', description: 'Calculate your needed final grade', icon: Target, path: '/final-grade', color: 'from-amber/10 to-ruby/10' },
   ];
 
   return (
@@ -116,7 +141,7 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          Welcome back, {user?.username || 'Student'}!
+          Welcome back, {username || user?.username || 'Student'}!
         </motion.h1>
         <p className="text-muted-foreground">
           Here's an overview of your academic progress
@@ -148,11 +173,44 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Quick Links */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="mb-8"
+      >
+        <h2 className="text-xl font-display font-semibold mb-4">Quick Access</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {quickLinks.map((link, index) => (
+            <motion.a
+              key={link.title}
+              href={link.path}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 + index * 0.05 }}
+            >
+              <Card className={`p-5 h-full bg-gradient-to-br ${link.color} border-0 hover:shadow-soft transition-all group cursor-pointer`}>
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-background/80">
+                    <link.icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold group-hover:text-primary transition-colors">{link.title}</h3>
+                    <p className="text-sm text-muted-foreground">{link.description}</p>
+                  </div>
+                </div>
+              </Card>
+            </motion.a>
+          ))}
+        </div>
+      </motion.div>
+
       {/* Subjects Overview */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.4 }}
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-display font-semibold">Your Subjects</h2>
@@ -176,7 +234,7 @@ export default function Dashboard() {
                 key={subject.id}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.4 + index * 0.05 }}
+                transition={{ delay: 0.45 + index * 0.05 }}
               >
                 <Card className="p-5 hover:shadow-soft transition-all cursor-pointer group">
                   <div className="flex items-center gap-3 mb-4">
@@ -207,9 +265,6 @@ export default function Dashboard() {
                       <div className="flex items-center justify-center gap-2 mt-1">
                         <span className={`grade-badge ${getGradeColor(subject.grade)}`}>
                           {getLetterGrade(subject.grade)}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          GPA: {subject.gpa.toFixed(2)}
                         </span>
                       </div>
                     </div>

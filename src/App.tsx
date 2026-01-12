@@ -6,10 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from '@/integrations/supabase/client';
 import { Sidebar } from "@/components/layout/Sidebar";
-import { Session, User } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Grades from "./pages/Grades";
+import FinalGradeCalculator from "./pages/FinalGradeCalculator";
+import NoteTaking from "./pages/NoteTaking";
+import Flashcards from "./pages/Flashcards";
 import PeriodicTable from "./pages/PeriodicTable";
 import MathCalculator from "./pages/MathCalculator";
 import AIAssistant from "./pages/AIAssistant";
@@ -17,6 +20,8 @@ import AIDetector from "./pages/AIDetector";
 import QuizGenerator from "./pages/QuizGenerator";
 import Pomodoro from "./pages/Pomodoro";
 import AITaskManager from "./pages/AITaskManager";
+import AIClassroomTutor from "./pages/AIClassroomTutor";
+import LectureRecordings from "./pages/LectureRecordings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -59,6 +64,9 @@ function AppRoutes() {
       <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <Auth />} />
       <Route path="/dashboard" element={<ProtectedRoute session={session}><Dashboard /></ProtectedRoute>} />
       <Route path="/grades" element={<ProtectedRoute session={session}><Grades /></ProtectedRoute>} />
+      <Route path="/final-grade" element={<ProtectedRoute session={session}><FinalGradeCalculator /></ProtectedRoute>} />
+      <Route path="/notes" element={<ProtectedRoute session={session}><NoteTaking /></ProtectedRoute>} />
+      <Route path="/flashcards" element={<ProtectedRoute session={session}><Flashcards /></ProtectedRoute>} />
       <Route path="/periodic-table" element={<ProtectedRoute session={session}><PeriodicTable /></ProtectedRoute>} />
       <Route path="/calculator" element={<ProtectedRoute session={session}><MathCalculator /></ProtectedRoute>} />
       <Route path="/ai-assistant" element={<ProtectedRoute session={session}><AIAssistant /></ProtectedRoute>} />
@@ -66,6 +74,8 @@ function AppRoutes() {
       <Route path="/quiz" element={<ProtectedRoute session={session}><QuizGenerator /></ProtectedRoute>} />
       <Route path="/pomodoro" element={<ProtectedRoute session={session}><Pomodoro /></ProtectedRoute>} />
       <Route path="/tasks" element={<ProtectedRoute session={session}><AITaskManager /></ProtectedRoute>} />
+      <Route path="/classroom" element={<ProtectedRoute session={session}><AIClassroomTutor /></ProtectedRoute>} />
+      <Route path="/recordings" element={<ProtectedRoute session={session}><LectureRecordings /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

@@ -1,13 +1,19 @@
 project_id = "hchfnnicseujpbkrxpxm"
 
 [functions.ai-chat]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-quiz]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-detector]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-task-suggest]
+verify_jwt = false
+
+[functions.humanize-text]
+verify_jwt = false
+
+[functions.ai-classroom-tutor]
 verify_jwt = false

@@ -174,7 +174,7 @@ export default function Auth() {
               <GraduationCap className="w-12 h-12 text-emerald" />
             </div>
             <h1 className="text-4xl font-display font-bold text-primary-foreground mb-4">
-              OSSM Study Hub
+              AI Study Hub
             </h1>
             <p className="text-xl text-primary-foreground/80 mb-8 max-w-md">
               Your comprehensive educational companion for academic excellence
@@ -185,8 +185,8 @@ export default function Auth() {
                 'Periodic Table',
                 'AI Assistant',
                 'Quiz Generator',
-                'Math Engine',
-                'Pomodoro Timer',
+                'AI Detector',
+                'Humanizer',
               ].map((feature, i) => (
                 <motion.div
                   key={feature}
@@ -216,7 +216,7 @@ export default function Auth() {
             <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <GraduationCap className="w-7 h-7 text-primary-foreground" />
             </div>
-            <h1 className="text-2xl font-display font-bold">OSSM Study Hub</h1>
+            <h1 className="text-2xl font-display font-bold">AI Study Hub</h1>
           </div>
 
           <div className="text-center mb-8">

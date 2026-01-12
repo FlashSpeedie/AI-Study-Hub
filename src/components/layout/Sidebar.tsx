@@ -30,11 +30,15 @@ interface SidebarProps {
   children: React.ReactNode;
 }
 
-import { Sparkles } from 'lucide-react';
+import { Sparkles, FileText, Layers, Target, School, Mic } from 'lucide-react';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/grades', icon: BookOpen, label: 'Grades' },
+  { path: '/final-grade', icon: Target, label: 'Final Grade Calc' },
+  { path: '/notes', icon: FileText, label: 'AI Notes' },
+  { path: '/flashcards', icon: Layers, label: 'Flashcards' },
+  { path: '/recordings', icon: Mic, label: 'Lecture Recordings' },
   { path: '/periodic-table', icon: Atom, label: 'Periodic Table' },
   { path: '/calculator', icon: Calculator, label: 'Math Engine' },
   { path: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
@@ -42,6 +46,7 @@ const navItems = [
   { path: '/quiz', icon: Brain, label: 'Quiz Architect' },
   { path: '/pomodoro', icon: Timer, label: 'Pomodoro' },
   { path: '/tasks', icon: Sparkles, label: 'AI Tasks' },
+  { path: '/classroom', icon: School, label: 'AI Classroom' },
 ];
 
 export function Sidebar({ children }: SidebarProps) {
@@ -127,7 +132,7 @@ export function Sidebar({ children }: SidebarProps) {
                 className="overflow-hidden"
               >
                 <h1 className="text-lg font-display font-bold text-sidebar-foreground whitespace-nowrap">
-                  OSSM Study Hub
+                  AI Study Hub
                 </h1>
               </motion.div>
             )}
@@ -247,7 +252,7 @@ export function Sidebar({ children }: SidebarProps) {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <GraduationCap className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-display font-bold">OSSM</span>
+          <span className="font-display font-bold">AI Study Hub</span>
         </div>
         <button
           onClick={toggleDarkMode}

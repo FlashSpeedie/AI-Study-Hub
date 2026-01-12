@@ -111,26 +111,178 @@ export type Database = {
       chat_messages: {
         Row: {
           content: string
+          conversation_id: string | null
           created_at: string
           id: string
           role: string
+          title: string | null
           user_id: string
         }
         Insert: {
           content: string
+          conversation_id?: string | null
           created_at?: string
           id?: string
           role: string
+          title?: string | null
           user_id: string
         }
         Update: {
           content?: string
+          conversation_id?: string | null
           created_at?: string
           id?: string
           role?: string
+          title?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      flashcard_decks: {
+        Row: {
+          cards: Json | null
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          cards?: Json | null
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          cards?: Json | null
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      lecture_recordings: {
+        Row: {
+          audio_url: string | null
+          created_at: string
+          duration: number | null
+          id: string
+          key_points: Json | null
+          name: string
+          notes: string | null
+          semester_id: string
+          status: string | null
+          subject_id: string
+          summary: string | null
+          transcript: string | null
+          updated_at: string
+          user_id: string
+          year_id: string
+        }
+        Insert: {
+          audio_url?: string | null
+          created_at?: string
+          duration?: number | null
+          id?: string
+          key_points?: Json | null
+          name: string
+          notes?: string | null
+          semester_id: string
+          status?: string | null
+          subject_id: string
+          summary?: string | null
+          transcript?: string | null
+          updated_at?: string
+          user_id: string
+          year_id: string
+        }
+        Update: {
+          audio_url?: string | null
+          created_at?: string
+          duration?: number | null
+          id?: string
+          key_points?: Json | null
+          name?: string
+          notes?: string | null
+          semester_id?: string
+          status?: string | null
+          subject_id?: string
+          summary?: string | null
+          transcript?: string | null
+          updated_at?: string
+          user_id?: string
+          year_id?: string
+        }
+        Relationships: []
+      }
+      note_folders: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          color: string | null
+          content: string | null
+          created_at: string
+          folder_id: string | null
+          id: string
+          subject: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          content?: string | null
+          created_at?: string
+          folder_id?: string | null
+          id?: string
+          subject?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          content?: string | null
+          created_at?: string
+          folder_id?: string | null
+          id?: string
+          subject?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "note_folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -253,8 +405,11 @@ export type Database = {
           completed: boolean
           created_at: string
           due_date: string | null
+          duration: number | null
           id: string
+          notes: string | null
           priority: string
+          subtasks: Json | null
           title: string
           user_id: string
         }
@@ -263,8 +418,11 @@ export type Database = {
           completed?: boolean
           created_at?: string
           due_date?: string | null
+          duration?: number | null
           id?: string
+          notes?: string | null
           priority?: string
+          subtasks?: Json | null
           title: string
           user_id: string
         }
@@ -273,8 +431,11 @@ export type Database = {
           completed?: boolean
           created_at?: string
           due_date?: string | null
+          duration?: number | null
           id?: string
+          notes?: string | null
           priority?: string
+          subtasks?: Json | null
           title?: string
           user_id?: string
         }
