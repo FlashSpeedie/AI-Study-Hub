@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { generateId } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { formatAIResponse } from '@/lib/utils';
 
 interface Question {
   id: string;
@@ -242,7 +243,7 @@ export default function QuizGenerator() {
                   <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
                     {i + 1}
                   </span>
-                  <p className="font-medium flex-1">{q.question}</p>
+                  <p className="font-medium flex-1">{formatAIResponse(q.question)}</p>
                   {showResults && (
                     q.userAnswer?.toLowerCase() === q.correctAnswer.toLowerCase() 
                       ? <CheckCircle className="w-5 h-5 text-emerald" />
@@ -255,7 +256,7 @@ export default function QuizGenerator() {
                     {q.options?.map((opt) => (
                       <div key={opt} className={`flex items-center space-x-2 p-2 rounded ${showResults && opt === q.correctAnswer ? 'bg-emerald/10' : ''}`}>
                         <RadioGroupItem value={opt} id={`${q.id}-${opt}`} />
-                        <Label htmlFor={`${q.id}-${opt}`}>{opt}</Label>
+                        <Label htmlFor={`${q.id}-${opt}`}>{formatAIResponse(opt)}</Label>
                       </div>
                     ))}
                   </RadioGroup>
@@ -266,7 +267,7 @@ export default function QuizGenerator() {
                     {['True', 'False'].map((opt) => (
                       <div key={opt} className={`flex items-center space-x-2 p-2 rounded ${showResults && opt === q.correctAnswer ? 'bg-emerald/10' : ''}`}>
                         <RadioGroupItem value={opt} id={`${q.id}-${opt}`} />
-                        <Label htmlFor={`${q.id}-${opt}`}>{opt}</Label>
+                        <Label htmlFor={`${q.id}-${opt}`}>{formatAIResponse(opt)}</Label>
                       </div>
                     ))}
                   </RadioGroup>
@@ -283,7 +284,7 @@ export default function QuizGenerator() {
                 )}
 
                 {showResults && q.userAnswer?.toLowerCase() !== q.correctAnswer.toLowerCase() && (
-                  <p className="text-sm text-emerald mt-2">Correct: {q.correctAnswer}</p>
+                  <p className="text-sm text-emerald mt-2">Correct: {formatAIResponse(q.correctAnswer)}</p>
                 )}
               </Card>
             </motion.div>

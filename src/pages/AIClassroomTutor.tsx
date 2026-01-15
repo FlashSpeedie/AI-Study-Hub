@@ -21,6 +21,7 @@ import { CustomCourseUpload } from '@/components/classroom/CustomCourseUpload';
 import { LessonQuiz } from '@/components/classroom/LessonQuiz';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { formatAIResponse } from '@/lib/utils';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -451,7 +452,9 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                           : 'bg-muted text-foreground rounded-bl-md'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      <p className="text-sm whitespace-pre-wrap">
+                        {message.role === 'assistant' ? formatAIResponse(message.content) : message.content}
+                      </p>
                     </div>
                   </motion.div>
                 ))}

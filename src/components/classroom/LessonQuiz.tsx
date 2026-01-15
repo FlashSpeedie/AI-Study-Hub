@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  CheckCircle2, 
-  XCircle, 
+import {
+  CheckCircle2,
+  XCircle,
   HelpCircle,
   ArrowRight,
   Trophy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatAIResponse } from '@/lib/utils';
 
 interface QuizQuestion {
   question: string;
@@ -115,7 +116,7 @@ export const LessonQuiz = ({ questions, onComplete, onSkip }: LessonQuizProps) =
 
       {/* Question */}
       <div className="p-5">
-        <p className="text-foreground font-medium mb-4">{currentQuestion.question}</p>
+        <p className="text-foreground font-medium mb-4">{formatAIResponse(currentQuestion.question)}</p>
 
         {/* Options */}
         <div className="space-y-2 mb-4">
@@ -155,7 +156,7 @@ export const LessonQuiz = ({ questions, onComplete, onSkip }: LessonQuizProps) =
                 }`}>
                   {String.fromCharCode(65 + index)}
                 </div>
-                <span className="flex-1 text-sm">{option}</span>
+                <span className="flex-1 text-sm">{formatAIResponse(option)}</span>
                 <AnimatePresence>
                   {showCorrectness && (
                     <motion.div
@@ -186,7 +187,7 @@ export const LessonQuiz = ({ questions, onComplete, onSkip }: LessonQuizProps) =
             >
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">Explanation: </span>
-                {currentQuestion.explanation}
+                {formatAIResponse(currentQuestion.explanation)}
               </p>
             </motion.div>
           )}

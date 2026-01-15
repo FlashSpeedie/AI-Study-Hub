@@ -27,6 +27,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Json } from '@/integrations/supabase/types';
+import { formatAIResponse } from '@/lib/utils';
 
 interface Flashcard {
   id: string;
@@ -464,7 +465,7 @@ export default function Flashcards() {
               className="absolute inset-0 p-8 flex items-center justify-center text-center"
               style={{ backfaceVisibility: 'hidden' }}
             >
-              <p className="text-xl font-medium">{currentCard.front}</p>
+              <p className="text-xl font-medium">{formatAIResponse(currentCard.front)}</p>
             </Card>
             
             {/* Back */}
@@ -472,7 +473,7 @@ export default function Flashcards() {
               className="absolute inset-0 p-8 flex items-center justify-center text-center bg-primary/5 border-primary/20"
               style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
             >
-              <p className="text-xl">{currentCard.back}</p>
+              <p className="text-xl">{formatAIResponse(currentCard.back)}</p>
             </Card>
           </motion.div>
         </div>
@@ -586,11 +587,11 @@ export default function Flashcards() {
                   <div className="flex-1 grid gap-2 md:grid-cols-2">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Front</p>
-                      <p className="font-medium">{card.front}</p>
+                      <p className="font-medium">{formatAIResponse(card.front)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Back</p>
-                      <p>{card.back}</p>
+                      <p>{formatAIResponse(card.back)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">

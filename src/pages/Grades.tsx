@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Calendar, 
-  Plus, 
-  ChevronDown, 
-  BookOpen, 
+import {
+  Calendar,
+  Plus,
+  ChevronDown,
+  BookOpen,
   ArrowLeft,
   Pencil,
   Trash2,
   ChevronUp,
   ExternalLink,
-  AlertTriangle
+  AlertTriangle,
+  Upload
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,10 +32,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useStore } from '@/store/useStore';
-import { 
-  calculateSubjectGrade, 
-  calculateCategoryAverage, 
-  getLetterGrade, 
+import {
+  calculateSubjectGrade,
+  calculateCategoryAverage,
+  getLetterGrade,
   getGradeColor,
   getGradeColorHex,
   getTotalCategoryWeight,
@@ -76,6 +77,7 @@ export default function Grades() {
   const [categoryDialog, setCategoryDialog] = useState<{ open: boolean; edit?: string; name: string; weight: string }>({ open: false, name: '', weight: '' });
   const [assignmentDialog, setAssignmentDialog] = useState<{ open: boolean; categoryId: string; edit?: string; name: string; earned: string; total: string }>({ open: false, categoryId: '', name: '', earned: '', total: '' });
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get current data
   const currentYear = academicYears.find(y => y.id === selectedYearId);
@@ -212,6 +214,86 @@ export default function Grades() {
       }
       return next;
     });
+  };
+
+  // Import Functions
+  const handleImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csv = e.target?.result as string;
+      importGradesFromCSV(csv);
+    };
+    reader.readAsText(file);
+  };
+
+  const importGradesFromCSV = (csv: string) => {
+    const lines = csv.trim().split('\n');
+    if (lines.length < 2) {
+      toast.error('CSV file must contain at least a header row and one data row');
+      return;
+    }
+
+    const expectedHeaders = ['Year', 'Semester', 'Subject', 'Category', 'Assignment', 'Earned Points', 'Total Points', 'Percentage'];
+    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+
+    if (headers.length !== expectedHeaders.length || !expectedHeaders.every((h, i) => h === headers[i])) {
+      toast.error(`Invalid CSV headers. Expected: ${expectedHeaders.join(', ')}. Found: ${headers.join(', ')}`);
+      return;
+    }
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',').map(field => field.replace(/"/g, '').trim());
+      if (row.length !== 8) {
+        toast.error(`Row ${i + 1} has invalid number of columns`);
+        return;
+      }
+
+      const [year, semester, subject, category, assignment, earnedStr, totalStr] = row;
+      const earned = parseFloat(earnedStr);
+      const total = parseFloat(totalStr);
+
+      if (isNaN(earned) || isNaN(total) || total <= 0) {
+        toast.error(`Row ${i + 1} has invalid point values`);
+        return;
+      }
+
+      // Find subject in current semester
+      const subj = currentSemester?.subjects.find(s => s.name === subject);
+      if (!subj) {
+        toast.error(`Subject "${subject}" not found in current semester`);
+        return;
+      }
+
+      // Find category in subject
+      const cat = subj.categories.find(c => c.name === category);
+      if (!cat) {
+        toast.error(`Category "${category}" not found in subject "${subject}"`);
+        return;
+      }
+
+      // Check if assignment already exists
+      const exists = cat.assignments.find(a => a.name === assignment);
+      if (exists) {
+        skippedCount++;
+        continue;
+      }
+
+      // Add assignment
+      addAssignment(selectedYearId!, selectedSemesterId!, subj.id, cat.id, assignment, earned, total);
+      importedCount++;
+    }
+
+    toast.success(`Imported ${importedCount} assignments${skippedCount > 0 ? `, skipped ${skippedCount} duplicates` : ''}`);
   };
 
   // Subject Detail View
@@ -540,6 +622,15 @@ export default function Grades() {
         <p className="text-muted-foreground">Track your academic performance across all subjects</p>
       </div>
 
+      {selectedSemesterId && (
+        <div className="flex gap-2 mb-4">
+          <Button onClick={handleImport} variant="outline" className="gap-2">
+            <Upload className="w-4 h-4" />
+            Import Grades from CSV
+          </Button>
+        </div>
+      )}
+
       {/* Academic Year Section */}
       <Card className="p-5 mb-6">
         <div className="flex items-center justify-between mb-3">
@@ -649,7 +740,7 @@ export default function Grades() {
                         <ExternalLink className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div className="flex items-center gap-3 mb-4">
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: subject.color + '20' }}
                         >
@@ -662,6 +753,8 @@ export default function Grades() {
                           </p>
                         </div>
                       </div>
+
+
                       
                       {hasGrades ? (
                         <div className="text-center py-2">
@@ -776,6 +869,13 @@ export default function Grades() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".csv"
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }

@@ -3,6 +3,9 @@ project_id = "hchfnnicseujpbkrxpxm"
 [functions.ai-chat]
 verify_jwt = false
 
+[functions.generate-flashcards]
+verify_jwt = false
+
 [functions.generate-quiz]
 verify_jwt = false
 

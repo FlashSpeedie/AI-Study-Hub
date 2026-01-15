@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import ChatHistorySidebar, { Conversation } from '@/components/chat/ChatHistorySidebar';
+import { formatAIResponse } from '@/lib/utils';
 
 interface Message {
   id: string;
@@ -370,7 +371,9 @@ export default function AIAssistant() {
                       ? 'bg-primary text-primary-foreground' 
                       : 'bg-muted'
                   }`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {msg.role === 'assistant' ? formatAIResponse(msg.content) : msg.content}
+                    </p>
                   </div>
                 </motion.div>
               ))
