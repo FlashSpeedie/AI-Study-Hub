@@ -240,7 +240,7 @@ export default function Grades() {
       return;
     }
 
-    const expectedHeaders = ['Year', 'Semester', 'Subject', 'Category', 'Assignment', 'Earned Points', 'Total Points', 'Percentage'];
+    const expectedHeaders = ['Year', 'Semester', 'Subject', 'Category', 'Category Weight', 'Assignment', 'Earned Points', 'Total Points', 'Percentage'];
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
 
     if (headers.length !== expectedHeaders.length || !expectedHeaders.every((h, i) => h === headers[i])) {
@@ -248,50 +248,122 @@ export default function Grades() {
       return;
     }
 
-    let importedCount = 0;
-    let skippedCount = 0;
-
+    // Parse all rows
+    const data = [];
     for (let i = 1; i < lines.length; i++) {
       const row = lines[i].split(',').map(field => field.replace(/"/g, '').trim());
-      if (row.length !== 8) {
+      if (row.length !== 9) {
         toast.error(`Row ${i + 1} has invalid number of columns`);
         return;
       }
 
-      const [year, semester, subject, category, assignment, earnedStr, totalStr] = row;
+      const [year, semester, subject, category, categoryWeightStr, assignment, earnedStr, totalStr] = row;
+      const categoryWeight = parseFloat(categoryWeightStr);
       const earned = parseFloat(earnedStr);
       const total = parseFloat(totalStr);
+
+      if (isNaN(categoryWeight) || categoryWeight < 0 || categoryWeight > 100) {
+        toast.error(`Row ${i + 1} has invalid category weight`);
+        return;
+      }
 
       if (isNaN(earned) || isNaN(total) || total <= 0) {
         toast.error(`Row ${i + 1} has invalid point values`);
         return;
       }
 
-      // Find subject in current semester
-      const subj = currentSemester?.subjects.find(s => s.name === subject);
-      if (!subj) {
-        toast.error(`Subject "${subject}" not found in current semester`);
-        return;
-      }
+      data.push({ year, semester, subject, category, categoryWeight, assignment, earned, total });
+    }
 
-      // Find category in subject
-      const cat = subj.categories.find(c => c.name === category);
-      if (!cat) {
-        toast.error(`Category "${category}" not found in subject "${subject}"`);
-        return;
-      }
+    // Create academic structure
+    const yearMap = new Map<string, string>();
+    const semesterMap = new Map<string, string>();
+    const subjectMap = new Map<string, string>();
+    const categoryMap = new Map<string, string>();
 
-      // Check if assignment already exists
+    // Add years
+    const uniqueYears = [...new Set(data.map(d => d.year))];
+    uniqueYears.forEach(yearName => {
+      let year = academicYears.find(y => y.name === yearName);
+      if (!year) {
+        addAcademicYear(yearName);
+        year = academicYears.find(y => y.name === yearName); // Find again after adding
+      }
+      if (year) yearMap.set(yearName, year.id);
+    });
+
+    // Add semesters
+    const uniqueSemesters = [...new Set(data.map(d => `${d.year}|${d.semester}`))];
+    uniqueSemesters.forEach(semKey => {
+      const [yearName, semName] = semKey.split('|');
+      const yearId = yearMap.get(yearName);
+      if (!yearId) return;
+
+      const year = academicYears.find(y => y.id === yearId);
+      let semester = year?.semesters.find(s => s.name === semName);
+      if (!semester) {
+        addSemester(yearId, semName);
+        semester = academicYears.find(y => y.id === yearId)?.semesters.find(s => s.name === semName);
+      }
+      if (semester) semesterMap.set(semKey, semester.id);
+    });
+
+    // Add subjects
+    const uniqueSubjects = [...new Set(data.map(d => `${d.year}|${d.semester}|${d.subject}`))];
+    uniqueSubjects.forEach(subjKey => {
+      const [yearName, semName, subjName] = subjKey.split('|');
+      const semKey = `${yearName}|${semName}`;
+      const semesterId = semesterMap.get(semKey);
+      if (!semesterId) return;
+
+      const semester = academicYears.find(y => y.id === yearMap.get(yearName))?.semesters.find(s => s.id === semesterId);
+      let subject = semester?.subjects.find(s => s.name === subjName);
+      if (!subject) {
+        addSubject(yearMap.get(yearName)!, semesterId, subjName);
+        subject = academicYears.find(y => y.id === yearMap.get(yearName))?.semesters.find(s => s.id === semesterId)?.subjects.find(s => s.name === subjName);
+      }
+      if (subject) subjectMap.set(subjKey, subject.id);
+    });
+
+    // Add categories
+    const uniqueCategories = [...new Set(data.map(d => `${d.year}|${d.semester}|${d.subject}|${d.category}`))];
+    uniqueCategories.forEach(catKey => {
+      const [yearName, semName, subjName, catName] = catKey.split('|');
+      const subjKey = `${yearName}|${semName}|${subjName}`;
+      const subjectId = subjectMap.get(subjKey);
+      if (!subjectId) return;
+
+      const subject = academicYears.find(y => y.id === yearMap.get(yearName))?.semesters.find(s => s.id === semesterMap.get(`${yearName}|${semName}`))?.subjects.find(s => s.id === subjectId);
+      let category = subject?.categories.find(c => c.name === catName);
+      if (!category) {
+        const weight = data.find(d => d.year === yearName && d.semester === semName && d.subject === subjName && d.category === catName)?.categoryWeight || 10;
+        addCategory(yearMap.get(yearName)!, semesterMap.get(`${yearName}|${semName}`)!, subjectId, catName, weight);
+        category = academicYears.find(y => y.id === yearMap.get(yearName))?.semesters.find(s => s.id === semesterMap.get(`${yearName}|${semName}`))?.subjects.find(s => s.id === subjectId)?.categories.find(c => c.name === catName);
+      }
+      if (category) categoryMap.set(catKey, category.id);
+    });
+
+    // Add assignments
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    data.forEach(({ year, semester, subject, category, assignment, earned, total }) => {
+      const catKey = `${year}|${semester}|${subject}|${category}`;
+      const categoryId = categoryMap.get(catKey);
+      if (!categoryId) return;
+
+      const cat = academicYears.find(y => y.id === yearMap.get(year))?.semesters.find(s => s.id === semesterMap.get(`${year}|${semester}`))?.subjects.find(s => s.id === subjectMap.get(`${year}|${semester}|${subject}`))?.categories.find(c => c.id === categoryId);
+      if (!cat) return;
+
       const exists = cat.assignments.find(a => a.name === assignment);
       if (exists) {
         skippedCount++;
-        continue;
+        return;
       }
 
-      // Add assignment
-      addAssignment(selectedYearId!, selectedSemesterId!, subj.id, cat.id, assignment, earned, total);
+      addAssignment(yearMap.get(year)!, semesterMap.get(`${year}|${semester}`)!, subjectMap.get(`${year}|${semester}|${subject}`)!, categoryId, assignment, earned, total);
       importedCount++;
-    }
+    });
 
     toast.success(`Imported ${importedCount} assignments${skippedCount > 0 ? `, skipped ${skippedCount} duplicates` : ''}`);
   };
