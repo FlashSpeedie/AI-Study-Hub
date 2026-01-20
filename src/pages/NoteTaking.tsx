@@ -406,9 +406,6 @@ export default function NoteTaking() {
     setAiAction(action);
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-
       const prompts = {
         summarize: `Summarize the following notes concisely in 3-5 bullet points:\n\n${editContent}`,
         outline: `Create a structured outline from these notes with clear headings and subpoints:\n\n${editContent}`,
@@ -417,30 +414,28 @@ export default function NoteTaking() {
         keyterms: `Extract and define the key terms and vocabulary from these notes in a glossary format:\n\n${editContent}`,
       };
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
           messages: [{ role: 'user', content: prompts[action] }],
-        }),
+        },
       });
 
-      if (!response.ok) throw new Error('Failed to process');
-
-      const reader = response.body?.getReader();
-      let rawResult = '';
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        rawResult += new TextDecoder().decode(value);
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
       }
 
-      // Parse the SSE response to extract clean content
-      const cleanContent = parseSSEResponse(rawResult);
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          throw new Error('Please add credits to your workspace.');
+        } else {
+          throw new Error(data.error);
+        }
+      }
+
+      const cleanContent = data?.response || '';
 
       if (!cleanContent) {
         throw new Error('No content received from AI');

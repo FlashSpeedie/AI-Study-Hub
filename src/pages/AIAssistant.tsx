@@ -226,74 +226,35 @@ export default function AIAssistant() {
         }, ...prev]);
       }
 
-      // Get the user's session token for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
           messages: [...messages, { role: 'user', content: userContent }].map(m => ({
             role: m.role,
             content: m.content,
           })),
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get response');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
       }
 
-      // Handle streaming response
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let assistantContent = '';
-      let assistantMessageId = Date.now().toString() + '-assistant';
-
-      // Add empty assistant message
-      setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '' }]);
-
-      if (reader) {
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete lines
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
-              
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  assistantContent += content;
-                  setMessages(prev => 
-                    prev.map(m => m.id === assistantMessageId 
-                      ? { ...m, content: assistantContent } 
-                      : m
-                    )
-                  );
-                }
-              } catch {
-                // Skip invalid JSON
-              }
-            }
-          }
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          throw new Error('Please add credits to your workspace.');
+        } else {
+          throw new Error(data.error);
         }
       }
+
+      const assistantContent = data?.response || '';
+      const assistantMessageId = Date.now().toString() + '-assistant';
+
+      // Add assistant message
+      setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: assistantContent }]);
 
       // Save assistant message to database
       if (assistantContent) {
@@ -428,7 +389,7 @@ export default function AIAssistant() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask me anything..."
-                className="min-h-[44px] max-h-32 resize-none"
+                className="min-h-[112px] max-h-64 resize-none overflow-y-auto"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();

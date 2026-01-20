@@ -74,16 +74,8 @@ export default function RecordingNotes({ recording, onSave }: RecordingNotesProp
 
     setIsGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
           messages: [
             {
               role: 'user',
@@ -104,39 +96,25 @@ KEY POINTS:
 - [Point 3]`
             }
           ],
-        }),
+        },
       });
 
-      if (!response.ok) throw new Error('Failed to generate summary');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
+      }
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let content = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
-              
-              try {
-                const parsed = JSON.parse(data);
-                const text = parsed.choices?.[0]?.delta?.content;
-                if (text) content += text;
-              } catch {
-                // Skip invalid JSON
-              }
-            }
-          }
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          throw new Error('Please add credits to your workspace.');
+        } else {
+          throw new Error(data.error);
         }
       }
+
+      const content = data?.response || '';
 
       // Parse the response
       const summaryMatch = content.match(/SUMMARY:\s*([\s\S]*?)(?=KEY POINTS:|$)/i);

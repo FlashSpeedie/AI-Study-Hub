@@ -241,21 +241,24 @@ export default function LectureRecordings() {
       const formData = new FormData();
       formData.append('audio', audioBlob);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-audio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error('Transcription failed');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
       }
 
-      const data = await response.json();
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          throw new Error('Please add credits to your workspace.');
+        } else {
+          throw new Error(data.error);
+        }
+      }
       
       if (data.success && data.transcript) {
         // Save transcript to database

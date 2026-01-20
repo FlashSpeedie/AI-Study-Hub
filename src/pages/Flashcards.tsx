@@ -251,21 +251,27 @@ export default function Flashcards() {
 
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-flashcards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ topic: aiPrompt, count: 5 }),
+      const { data, error } = await supabase.functions.invoke('generate-flashcards', {
+        body: { topic: aiPrompt, count: 5 },
       });
 
-      if (!response.ok) throw new Error('Failed to generate flashcards');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
+      }
 
-      const { flashcards } = await response.json();
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          toast.error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          toast.error('Please add credits to your workspace.');
+        } else {
+          toast.error(data.error);
+        }
+        return;
+      }
+
+      const { flashcards } = data;
       
       const newCards = (flashcards || []).map((fc: { front: string; back: string }) => ({
         id: crypto.randomUUID(),

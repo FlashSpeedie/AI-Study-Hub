@@ -66,27 +66,31 @@ export default function QuizGenerator() {
     }
 
     setIsGenerating(true);
-    
+
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-quiz`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('generate-quiz', {
+        body: {
           topic: topic.trim(),
           questionCount,
           fileContent: uploadedFile?.content,
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate quiz');
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
       }
 
-      const data = await response.json();
+      if (data?.error) {
+        if (data.error.includes('429') || data.error.includes('Rate limit')) {
+          toast.error('Rate limit exceeded. Please try again later.');
+        } else if (data.error.includes('402')) {
+          toast.error('Please add credits to your workspace.');
+        } else {
+          toast.error(data.error);
+        }
+        return;
+      }
       
       if (!data.questions || !Array.isArray(data.questions)) {
         throw new Error('Invalid quiz format received');
