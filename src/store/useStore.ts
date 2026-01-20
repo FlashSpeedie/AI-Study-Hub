@@ -27,7 +27,13 @@ interface AppState {
   
   // Tasks
   tasks: Task[];
-  
+
+  // Pomodoro
+  pomodoroMode: 'focus' | 'shortBreak' | 'longBreak';
+  pomodoroTimeLeft: number;
+  pomodoroIsRunning: boolean;
+  pomodoroSessions: number;
+
   // Quizzes
   quizzes: Quiz[];
   
@@ -72,6 +78,13 @@ interface AppState {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTask: (id: string) => void;
+
+  // Actions - Pomodoro
+  setPomodoroMode: (mode: 'focus' | 'shortBreak' | 'longBreak') => void;
+  setPomodoroTimeLeft: (timeLeft: number) => void;
+  setPomodoroIsRunning: (isRunning: boolean) => void;
+  incrementPomodoroSessions: () => void;
+  resetPomodoroTimer: () => void;
   
   // Actions - Quizzes
   addQuiz: (quiz: Omit<Quiz, 'id' | 'createdAt'>) => void;
@@ -113,6 +126,10 @@ export const useStore = create<AppState>()(
       selectedSemesterId: null,
       selectedSubjectId: null,
       tasks: [],
+      pomodoroMode: 'focus',
+      pomodoroTimeLeft: 25 * 60,
+      pomodoroIsRunning: false,
+      pomodoroSessions: 0,
       quizzes: [],
       chatMessages: [],
 
@@ -484,6 +501,26 @@ export const useStore = create<AppState>()(
         }));
       },
 
+      // Pomodoro Actions
+      setPomodoroMode: (mode) => {
+        const TIMER_PRESETS = { focus: 25 * 60, shortBreak: 5 * 60, longBreak: 15 * 60 };
+        set({
+          pomodoroMode: mode,
+          pomodoroTimeLeft: TIMER_PRESETS[mode],
+          pomodoroIsRunning: false
+        });
+      },
+      setPomodoroTimeLeft: (timeLeft) => set({ pomodoroTimeLeft: timeLeft }),
+      setPomodoroIsRunning: (isRunning) => set({ pomodoroIsRunning: isRunning }),
+      incrementPomodoroSessions: () => set((state) => ({ pomodoroSessions: state.pomodoroSessions + 1 })),
+      resetPomodoroTimer: () => {
+        const TIMER_PRESETS = { focus: 25 * 60, shortBreak: 5 * 60, longBreak: 15 * 60 };
+        set((state) => ({
+          pomodoroTimeLeft: TIMER_PRESETS[state.pomodoroMode],
+          pomodoroIsRunning: false
+        }));
+      },
+
       // Quiz Actions
       addQuiz: (quiz) => {
         const newQuiz: Quiz = {
@@ -523,6 +560,9 @@ export const useStore = create<AppState>()(
         selectedYearId: state.selectedYearId,
         selectedSemesterId: state.selectedSemesterId,
         tasks: state.tasks,
+        pomodoroMode: state.pomodoroMode,
+        pomodoroTimeLeft: state.pomodoroTimeLeft,
+        pomodoroSessions: state.pomodoroSessions,
         quizzes: state.quizzes,
       }),
     }

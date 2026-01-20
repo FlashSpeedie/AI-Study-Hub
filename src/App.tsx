@@ -6,6 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from '@/integrations/supabase/client';
 import { Sidebar } from "@/components/layout/Sidebar";
+import { BackgroundTimer } from "@/components/BackgroundTimer";
+import { MiniPomodoroPreview } from "@/components/MiniPomodoroPreview";
+import { MiniTaskPreview } from "@/components/MiniTaskPreview";
 import { Session } from '@supabase/supabase-js';
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -87,6 +90,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <BackgroundTimer />
+        <MiniPomodoroPreview />
+        <MiniTaskPreview />
         <AppRoutes />
       </BrowserRouter>
     </TooltipProvider>
