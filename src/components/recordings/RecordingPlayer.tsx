@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Download } from 'lucide-react'; // Added Download
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { toast } from 'sonner'; // Added toast import
 
 interface Recording {
   id: string;
@@ -105,6 +106,20 @@ export default function RecordingPlayer({ recording }: RecordingPlayerProps) {
     }
   };
 
+  const handleDownloadAudio = () => {
+    if (recording.audio_url) {
+      const link = document.createElement('a');
+      link.href = recording.audio_url;
+      link.download = `${recording.name}.webm`; // Or appropriate extension
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Downloading audio...');
+    } else {
+      toast.error('No audio URL available for download.');
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -203,8 +218,13 @@ export default function RecordingPlayer({ recording }: RecordingPlayerProps) {
           </Button>
         </div>
 
-        {/* Volume Control */}
-        <div className="flex items-center gap-3 max-w-xs mx-auto">
+        {/* Volume Control and Download */}
+        <div className="flex items-center justify-center gap-3 max-w-xs mx-auto">
+          {recording.audio_url && (
+            <Button variant="ghost" size="icon" onClick={handleDownloadAudio}>
+              <Download className="w-4 h-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={toggleMute}>
             {isMuted ? (
               <VolumeX className="w-4 h-4" />

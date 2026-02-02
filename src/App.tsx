@@ -24,6 +24,7 @@ import QuizGenerator from "./pages/QuizGenerator";
 import Pomodoro from "./pages/Pomodoro";
 import AITaskManager from "./pages/AITaskManager";
 import AIClassroomTutor from "./pages/AIClassroomTutor";
+import Maintenance from "./pages/Maintenance";
 import LectureRecordings from "./pages/LectureRecordings";
 import NotFound from "./pages/NotFound";
 
@@ -78,6 +79,7 @@ function AppRoutes() {
       <Route path="/pomodoro" element={<ProtectedRoute session={session}><Pomodoro /></ProtectedRoute>} />
       <Route path="/tasks" element={<ProtectedRoute session={session}><AITaskManager /></ProtectedRoute>} />
       <Route path="/classroom" element={<ProtectedRoute session={session}><AIClassroomTutor /></ProtectedRoute>} />
+      <Route path="/classroom-helper" element={<ProtectedRoute session={session}><Maintenance /></ProtectedRoute>} />
       <Route path="/recordings" element={<ProtectedRoute session={session}><LectureRecordings /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

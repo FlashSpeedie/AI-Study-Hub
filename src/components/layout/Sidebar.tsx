@@ -30,7 +30,7 @@ interface SidebarProps {
   children: React.ReactNode;
 }
 
-import { Sparkles, FileText, Layers, Target, School, Mic } from 'lucide-react';
+import { Sparkles, FileText, Layers, Target, School, Mic, HelpCircle } from 'lucide-react';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -47,6 +47,7 @@ const navItems = [
   { path: '/pomodoro', icon: Timer, label: 'Pomodoro' },
   { path: '/tasks', icon: Sparkles, label: 'AI Tasks' },
   { path: '/classroom', icon: School, label: 'AI Classroom' },
+  { path: '/classroom-helper', icon: HelpCircle, label: 'Classroom Helper' },
 ];
 
 export function Sidebar({ children }: SidebarProps) {

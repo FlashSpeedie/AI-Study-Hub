@@ -17,7 +17,8 @@ import {
   Download,
   Volume2,
   Upload,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ export default function LectureRecordings() {
   const [recordingSubjectId, setRecordingSubjectId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
 
   // Get current data
   const currentYear = academicYears.find(y => y.id === selectedYearId);
@@ -231,15 +233,39 @@ export default function LectureRecordings() {
     }
   };
 
-  const handleTranscribeRecording = async (audioBlob: Blob) => {
-    if (!selectedRecording) return;
+  const handleTranscribeRecording = async (audioBlob: Blob, recordingId?: string) => {
+    const targetId = recordingId || selectedRecording?.id;
+    if (!targetId) return;
+
+    const targetRecording = recordings.find(r => r.id === targetId);
+    if (!targetRecording) return;
 
     try {
       setIsTranscribing(true);
+      setTranscribingId(targetId);
+      
+      // Determine audio source - use provided blob or fetch from URL
+      let audioData = audioBlob;
+      
+      if (!audioBlob && targetRecording.audio_url) {
+        // Fetch audio from URL and convert to blob
+        try {
+          const response = await fetch(targetRecording.audio_url);
+          audioData = await response.blob();
+        } catch (fetchError) {
+          console.error('Error fetching audio:', fetchError);
+          throw new Error('Could not access audio file for transcription');
+        }
+      }
+
+      if (!audioData) {
+        throw new Error('No audio data available for transcription');
+      }
+
       toast.info('Transcribing audio...', { duration: 3000 });
 
       const formData = new FormData();
-      formData.append('audio', audioBlob);
+      formData.append('audio', audioData, 'audio.webm');
 
       const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
@@ -265,29 +291,44 @@ export default function LectureRecordings() {
         const { error } = await supabase
           .from('lecture_recordings')
           .update({ transcript: data.transcript })
-          .eq('id', selectedRecording.id);
+          .eq('id', targetId);
 
         if (error) throw error;
 
         setRecordings(prev => prev.map(r =>
-          r.id === selectedRecording.id
+          r.id === targetId
             ? { ...r, transcript: data.transcript }
             : r
         ));
-        setSelectedRecording(prev => 
-          prev?.id === selectedRecording.id 
-            ? { ...prev, transcript: data.transcript }
-            : prev
-        );
+        
+        if (selectedRecording?.id === targetId) {
+          setSelectedRecording(prev => prev ? { ...prev, transcript: data.transcript } : null);
+        }
+        
         toast.success('Transcription complete');
+      } else if (data.warning || data.message) {
+        toast.info(data.message || data.warning);
       } else {
         toast.warning('Could not transcribe audio - no speech detected');
       }
-    } catch (error) {
+    } catch (error: any) { // Use 'any' for broader error handling, then refine
       console.error('Error transcribing:', error);
-      toast.error('Failed to transcribe audio');
+      let errorMessage = 'Failed to transcribe audio';
+
+      // Check if the error object itself contains a message
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = (error as { message: string }).message;
+      } else if (error && typeof error === 'object' && 'data' in error && (error as any).data?.error) {
+        // This handles the case where supabase.functions.invoke returns an error object with a data.error property
+        errorMessage = (error as any).data.error;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsTranscribing(false);
+      setTranscribingId(null);
     }
   };
 
@@ -416,6 +457,8 @@ export default function LectureRecordings() {
               onSave={(notes, summary, keyPoints) => 
                 handleUpdateNotes(selectedRecording.id, notes, summary, keyPoints)
               }
+              isTranscribing={isTranscribing && transcribingId === selectedRecording.id}
+              onRetranscribe={() => handleTranscribeRecording(undefined, selectedRecording.id)}
             />
           </TabsContent>
         </Tabs>
