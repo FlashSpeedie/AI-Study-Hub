@@ -1,12 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, Atom } from 'lucide-react';
+import { X, Search, Atom, Shuffle, Type, MousePointer, CheckCircle, XCircle, Trophy, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Element } from '@/types';
 import { periodicTableData } from '@/data/periodicTable';
+import { toast } from 'sonner';
 
 const categoryColors: Record<string, string> = {
   'alkali-metal': 'bg-red-500/80 hover:bg-red-500',
@@ -40,6 +42,17 @@ export default function PeriodicTable() {
   const [selectedElement, setSelectedElement] = useState<Element | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  
+  // Game state
+  const [gameMode, setGameMode] = useState<'none' | 'drag-drop' | 'name-to-icon' | 'icon-to-name'>('none');
+  const [gameScore, setGameScore] = useState(0);
+  const [gameTotal, setGameTotal] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState<Element | null>(null);
+  const [userAnswer, setUserAnswer] = useState('');
+  const [answerResult, setAnswerResult] = useState<'correct' | 'incorrect' | null>(null);
+  const [draggedElement, setDraggedElement] = useState<Element | null>(null);
+  const [dropTarget, setDropTarget] = useState<{row: number, col: number} | null>(null);
+  const [gameElements, setGameElements] = useState<Element[]>([]);
 
   const filteredElements = useMemo(() => {
     if (!searchQuery) return periodicTableData;
@@ -69,6 +82,103 @@ export default function PeriodicTable() {
     return true;
   };
 
+  // Game Functions
+  const startGame = (mode: 'drag-drop' | 'name-to-icon' | 'icon-to-name') => {
+    setGameMode(mode);
+    setGameScore(0);
+    setGameTotal(0);
+    setAnswerResult(null);
+    setUserAnswer('');
+    
+    // Get random elements for the game
+    const shuffled = [...periodicTableData].sort(() => Math.random() - 0.5).slice(0, 10);
+    setGameElements(shuffled);
+    
+    if (shuffled.length > 0) {
+      setCurrentQuestion(shuffled[0]);
+    }
+    
+    toast.info(`Starting ${mode === 'drag-drop' ? 'Drag & Drop' : mode === 'name-to-icon' ? 'Name to Symbol' : 'Symbol to Name'} game!`);
+  };
+
+  const nextQuestion = () => {
+    const currentIndex = gameElements.findIndex(el => el.atomicNumber === currentQuestion?.atomicNumber);
+    const nextIndex = currentIndex + 1;
+    
+    if (nextIndex < gameElements.length) {
+      setCurrentQuestion(gameElements[nextIndex]);
+      setUserAnswer('');
+      setAnswerResult(null);
+    } else {
+      // Game over
+      const percentage = gameTotal > 0 ? Math.round((gameScore / gameTotal) * 100) : 0;
+      toast.success(`Game Over! Score: ${gameScore}/${gameTotal} (${percentage}%)`);
+      setGameMode('none');
+    }
+  };
+
+  const checkAnswer = () => {
+    if (!currentQuestion || !userAnswer.trim()) return;
+    
+    setGameTotal(prev => prev + 1);
+    
+    let isCorrect = false;
+    
+    if (gameMode === 'name-to-icon') {
+      // User types the symbol
+      isCorrect = userAnswer.trim().toLowerCase() === currentQuestion.symbol.toLowerCase();
+    } else if (gameMode === 'icon-to-name') {
+      // User types the name
+      isCorrect = userAnswer.trim().toLowerCase() === currentQuestion.name.toLowerCase();
+    }
+    
+    if (isCorrect) {
+      setGameScore(prev => prev + 1);
+      setAnswerResult('correct');
+    } else {
+      setAnswerResult('incorrect');
+    }
+    
+    // Auto-advance after delay
+    setTimeout(() => {
+      nextQuestion();
+    }, 1500);
+  };
+
+  const handleDragStart = (element: Element) => {
+    setDraggedElement(element);
+  };
+
+  const handleDrop = (row: number, col: number) => {
+    if (!draggedElement) return;
+    
+    const position = getElementPosition(draggedElement);
+    const isCorrect = position.gridRow === row && position.gridColumn === col;
+    
+    setGameTotal(prev => prev + 1);
+    if (isCorrect) {
+      setGameScore(prev => prev + 1);
+      toast.success(`Correct! ${draggedElement.name} belongs at row ${row}, col ${col}`);
+    } else {
+      toast.error(`Incorrect! ${draggedElement.name} belongs at row ${position.gridRow}, col ${position.gridColumn}`);
+    }
+    
+    setDraggedElement(null);
+    setDropTarget(null);
+    
+    // Next question
+    const currentIndex = gameElements.findIndex(el => el.atomicNumber === draggedElement.atomicNumber);
+    const nextIndex = currentIndex + 1;
+    
+    if (nextIndex < gameElements.length) {
+      setCurrentQuestion(gameElements[nextIndex]);
+    } else {
+      const percentage = gameTotal > 0 ? Math.round((gameScore / gameTotal) * 100) : 0;
+      toast.success(`Game Over! Score: ${gameScore}/${gameTotal} (${percentage}%)`);
+      setGameMode('none');
+    }
+  };
+
   return (
     <div className="max-w-full mx-auto animate-in">
       <div className="mb-6">
@@ -79,16 +189,101 @@ export default function PeriodicTable() {
         <p className="text-muted-foreground">Interactive periodic table of elements</p>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, symbol, or number..."
-          className="pl-10"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      {/* Search & Game Controls */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, symbol, or number..."
+            className="pl-10"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            disabled={gameMode !== 'none'}
+          />
+        </div>
+        
+        {/* Game Mode Selector */}
+        <div className="flex gap-2">
+          {gameMode === 'none' ? (
+            <>
+              <Button 
+                onClick={() => startGame('name-to-icon')} 
+                variant="outline" 
+                className="gap-2"
+              >
+                <Type className="w-4 h-4" />
+                Name to Symbol
+              </Button>
+              <Button 
+                onClick={() => startGame('icon-to-name')} 
+                variant="outline" 
+                className="gap-2"
+              >
+                <Type className="w-4 h-4" />
+                Symbol to Name
+              </Button>
+            </>
+          ) : (
+            <>
+              <Card className="px-4 py-2 flex items-center gap-3">
+                <Trophy className="w-5 h-5 text-amber" />
+                <span className="font-semibold">Score: {gameScore}/{gameTotal}</span>
+              </Card>
+              <Button 
+                onClick={() => setGameMode('none')} 
+                variant="destructive"
+              >
+                End Game
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Game UI */}
+      {gameMode !== 'none' && currentQuestion && (
+        <Card className="mb-6 p-4 bg-gradient-to-r from-primary/5 to-emerald/5 border-primary/20">
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <div className="flex-1 text-center">
+              {gameMode === 'name-to-icon' && (
+                <>
+                  <p className="text-lg font-medium mb-2">What is the symbol for:</p>
+                  <p className="text-2xl font-bold text-primary">{currentQuestion.name}</p>
+                </>
+              )}
+              {gameMode === 'icon-to-name' && (
+                <>
+                  <p className="text-lg font-medium mb-2">What element has the symbol:</p>
+                  <p className="text-4xl font-bold text-primary">{currentQuestion.symbol}</p>
+                </>
+              )}
+            </div>
+            
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder={gameMode === 'name-to-icon' ? 'Type symbol...' : 'Type name...'}
+                value={userAnswer}
+                onChange={(e) => setUserAnswer(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && checkAnswer()}
+                className="w-40"
+                disabled={answerResult !== null}
+              />
+              <Button onClick={checkAnswer} disabled={answerResult !== null}>
+                Check
+              </Button>
+            </div>
+            
+            {answerResult && (
+              <div className={`flex items-center gap-2 ${answerResult === 'correct' ? 'text-emerald' : 'text-ruby'}`}>
+                {answerResult === 'correct' ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
+                <span className="font-semibold">
+                  {answerResult === 'correct' ? 'Correct!' : `Wrong! Answer: ${gameMode === 'name-to-icon' ? currentQuestion.symbol : currentQuestion.name}`}
+                </span>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-2 mb-6">

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
@@ -11,7 +11,9 @@ import {
   ChevronUp,
   ExternalLink,
   AlertTriangle,
-  Upload
+  Upload,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,6 +80,21 @@ export default function Grades() {
   const [assignmentDialog, setAssignmentDialog] = useState<{ open: boolean; categoryId: string; edit?: string; name: string; earned: string; total: string }>({ open: false, categoryId: '', name: '', earned: '', total: '' });
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  // PDF Parsing state
+  const [isPdfParsing, setIsPdfParsing] = useState(false);
+  const [pdfParseError, setPdfParseError] = useState<string | null>(null);
+  const [parsedCategories, setParsedCategories] = useState<{ name: string; weight: number }[] | null>(null);
+  const [parsedSubjectName, setParsedSubjectName] = useState<string>('');
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey) {
+      setGeminiApiKey(savedKey);
+    }
+  }, []);
 
   // Get current data
   const currentYear = academicYears.find(y => y.id === selectedYearId);
@@ -366,6 +383,266 @@ export default function Grades() {
     });
 
     toast.success(`Imported ${importedCount} assignments${skippedCount > 0 ? `, skipped ${skippedCount} duplicates` : ''}`);
+  };
+
+  // PDF Syllabus Parsing
+  const handlePdfImport = () => {
+    pdfInputRef.current?.click();
+  };
+
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.includes('pdf')) {
+      toast.error('Please upload a PDF file');
+      return;
+    }
+
+    if (!selectedYearId || !selectedSemesterId) {
+      toast.error('Please select an academic year and semester first before importing a syllabus');
+      return;
+    }
+
+    const storedKey = localStorage.getItem('gemini_api_key');
+    const apiKey = geminiApiKey || storedKey;
+    if (!apiKey && !storedKey) {
+      const enteredKey = prompt('Please enter your Gemini API key:\n(You can get one from https://aistudio.google.com/app/apikey)\n\nThis will be saved for future use.');
+      if (!enteredKey) {
+        toast.error('Gemini API key is required');
+        return;
+      }
+      localStorage.setItem('gemini_api_key', enteredKey);
+      setGeminiApiKey(enteredKey);
+    }
+
+    setIsPdfParsing(true);
+    setPdfParseError(null);
+    setParsedCategories(null);
+    setParsedSubjectName('');
+
+    try {
+      // Read PDF file as base64
+      const reader = new FileReader();
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix if present
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const key = geminiApiKey || localStorage.getItem('gemini_api_key') || '';
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+
+      const systemPrompt = `You are an expert at analyzing course syllabi. Your task is to extract course and grading information from syllabus text.
+
+Extract the following from the syllabus:
+
+1. COURSE/SUBJECT NAME: The name of the course (e.g., "Introduction to Computer Science", "Calculus I", "Physics 101")
+2. GRADING CATEGORIES: All grading categories and their weight percentages
+
+Common grading categories include:
+- Exams, Tests, Quizzes
+- Homework, Assignments
+- Projects
+- Labs
+- Participation
+- Final Exam
+- Presentations
+- Essays/Papers
+- Attendance
+- Midterm
+- Final Project
+
+For each grading category, provide:
+1. The category name (standardize common variations)
+2. The weight percentage (as a number)
+
+IMPORTANT: 
+- Return ONLY a valid JSON object with "subjectName" and "categories" properties
+- Do NOT include any other text or explanation
+- The category weights should sum to 100% (or close to it)
+- If you cannot find exact percentages, estimate based on typical course structures but note it
+- Extract EVERY category mentioned, don't skip any
+- Look for the course name in the title, header, or first page of the syllabus
+- If you cannot find grading information, return an empty categories array and set subjectName to empty string
+
+Example output format:
+{"subjectName": "CS 101: Introduction to Programming", "categories": [{"name": "Exams", "weight": 40}, {"name": "Homework", "weight": 30}, {"name": "Projects", "weight": 20}, {"name": "Participation", "weight": 10}]}`;
+
+      const userMessage = `Extract all grading categories and their weight percentages from this course syllabus file: ${file.name}
+
+Please analyze the syllabus content and extract the grading breakdown. Look for sections like:
+- Grading
+- Evaluation  
+- Grading Policy
+- Grade Breakdown
+- Assessment
+- Course Requirements
+- Tests and Exams
+- Homework
+- Projects
+- Participation
+- Final Exam
+
+Return a JSON object with:
+- "subjectName": The course name
+- "categories": Array of {name, weight} objects for each grading category
+
+If you cannot find clear grading information, still try to identify any mentioned categories and estimate weights, or return an empty array if absolutely nothing is found.`;
+
+      const geminiRequest = {
+        contents: [
+          {
+            parts: [
+              { text: systemPrompt },
+              { text: userMessage }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2000,
+          responseMimeType: "application/json"
+        }
+      };
+
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(geminiRequest),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Gemini API error:', errorText);
+        
+        if (response.status === 401 || errorText.includes('API_KEY_INVALID')) {
+          localStorage.removeItem('gemini_api_key');
+          setGeminiApiKey('');
+          throw new Error('Invalid Gemini API key. Please check your API key and try again.');
+        } else if (response.status === 403 || errorText.includes('permission')) {
+          throw new Error('Gemini API access denied. Please check your API key permissions.');
+        } else if (response.status === 429) {
+          throw new Error('Gemini API rate limit exceeded. Please try again later.');
+        }
+        throw new Error(`Failed to analyze syllabus: ${errorText}`);
+      }
+
+      const aiData = await response.json();
+      const content = aiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No content returned from Gemini AI. Please try again.');
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        console.error('Failed to parse AI response:', content);
+        throw new Error('AI returned invalid JSON format. Please try again.');
+      }
+
+      const subjectName = parsed.subjectName || parsed.courseName || parsed.course || parsed.name || '';
+      let categories: { name: string; weight: number }[] = [];
+
+      if (Array.isArray(parsed)) {
+        categories = parsed;
+      } else if (parsed.categories) {
+        categories = Array.isArray(parsed.categories) ? parsed.categories : [];
+      } else if (parsed.grading || parsed.gradeBreakdown || parsed.assessments) {
+        categories = parsed.grading || parsed.gradeBreakdown || parsed.assessments;
+      }
+
+      categories = categories.filter((cat) => 
+        cat.name && typeof cat.weight === 'number' && cat.weight > 0
+      );
+
+      if (categories.length === 0) {
+        throw new Error('No grading categories found in the syllabus. Please add them manually.');
+      }
+
+      setParsedSubjectName(subjectName);
+      setParsedCategories(categories);
+
+      const totalWeight = categories.reduce((sum, cat) => sum + cat.weight, 0);
+      
+      if (Math.abs(totalWeight - 100) > 0.1) {
+        setPdfParseError(`Warning: Category weights sum to ${totalWeight.toFixed(1)}%, not 100%. Please adjust manually.`);
+        toast.warning(`Weights sum to ${totalWeight.toFixed(1)}%, not 100%`);
+      } else {
+        toast.success(subjectName 
+          ? `Syllabus parsed successfully! Found: ${subjectName}`
+          : 'Syllabus parsed successfully!'
+        );
+      }
+    } catch (error) {
+      console.error('PDF parsing error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to parse PDF';
+      setPdfParseError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsPdfParsing(false);
+      // Reset file input
+      if (pdfInputRef.current) {
+        pdfInputRef.current.value = '';
+      }
+    }
+  };
+
+  const applyParsedCategories = () => {
+    if (!parsedCategories || !selectedYearId || !selectedSemesterId) return;
+
+    let subjectId = selectedSubjectId;
+
+    // If no subject is selected, create a new one with the parsed subject name
+    if (!subjectId && parsedSubjectName) {
+      // Create the subject with AI-detected name
+      addSubject(selectedYearId, selectedSemesterId, parsedSubjectName);
+      
+      // Get the newly created subject
+      const year = academicYears.find(y => y.id === selectedYearId);
+      const semester = year?.semesters.find(s => s.id === selectedSemesterId);
+      const newSubject = semester?.subjects.find(s => s.name === parsedSubjectName);
+      
+      if (newSubject) {
+        subjectId = newSubject.id;
+        setSelectedSubject(subjectId);
+        toast.success(`Created subject: ${parsedSubjectName}`);
+      }
+    }
+
+    if (!subjectId) {
+      toast.error('Please select or create a subject first');
+      return;
+    }
+
+    // Get the current subject for deletion
+    const year = academicYears.find(y => y.id === selectedYearId);
+    const semester = year?.semesters.find(s => s.id === selectedSemesterId);
+    const subject = semester?.subjects.find(s => s.id === subjectId);
+
+    // Clear existing categories and add new ones
+    subject?.categories.forEach(cat => {
+      deleteCategory(selectedYearId, selectedSemesterId, subjectId, cat.id);
+    });
+
+    // Add parsed categories
+    parsedCategories.forEach(cat => {
+      addCategory(selectedYearId, selectedSemesterId, subjectId, cat.name, cat.weight);
+    });
+
+    toast.success(`Added ${parsedCategories.length} categories from syllabus`);
+    setParsedCategories(null);
+    setParsedSubjectName('');
+    setPdfParseError(null);
   };
 
   // Subject Detail View
@@ -694,13 +971,88 @@ export default function Grades() {
         <p className="text-muted-foreground">Track your academic performance across all subjects</p>
       </div>
 
-      {selectedSemesterId && (
+      {/* {selectedSemesterId && (
         <div className="flex gap-2 mb-4">
           <Button onClick={handleImport} variant="outline" className="gap-2">
             <Upload className="w-4 h-4" />
             Import Grades from CSV
           </Button>
+          <Button onClick={handlePdfImport} variant="outline" className="gap-2" disabled={isPdfParsing}>
+            {isPdfParsing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileText className="w-4 h-4" />
+            )}
+            Parse Syllabus from PDF
+          </Button>
         </div>
+      )} */}
+
+      {/* Parsed Categories Preview */}
+      {parsedCategories && (
+        <Card className="p-4 mb-6 border-primary/20">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Parsed Syllabus</h3>
+          </div>
+          
+          {/* Subject Name Input - Show when no subject is selected */}
+          {!selectedSubjectId && (
+            <div className="mb-4">
+              <Label htmlFor="subjectName" className="text-sm font-medium mb-2 block">
+                Subject/Course Name (detected from syllabus)
+              </Label>
+              <Input
+                id="subjectName"
+                value={parsedSubjectName}
+                onChange={(e) => setParsedSubjectName(e.target.value)}
+                placeholder="Enter subject name (e.g., CS 101: Introduction to Programming)"
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                You can edit the subject name before creating it
+              </p>
+            </div>
+          )}
+          
+          {pdfParseError && (
+            <div className="flex items-center gap-2 p-3 mb-4 bg-amber/10 text-amber rounded-lg text-sm">
+              <AlertTriangle className="w-4 h-4" />
+              {pdfParseError}
+            </div>
+          )}
+          <div className="space-y-2 mb-4">
+            <p className="text-sm font-medium text-muted-foreground">Grading Categories:</p>
+            {parsedCategories.map((cat, index) => (
+              <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="font-medium">{cat.name}</span>
+                <span className="text-sm text-muted-foreground">{cat.weight}%</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between p-2 border-t font-semibold">
+              <span>Total</span>
+              <span className={cn(
+                Math.abs(parsedCategories.reduce((sum, c) => sum + c.weight, 0) - 100) > 0.1
+                  ? "text-amber"
+                  : "text-emerald"
+              )}>
+                {parsedCategories.reduce((sum, c) => sum + c.weight, 0).toFixed(1)}%
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              onClick={applyParsedCategories} 
+              className="gap-2 bg-primary hover:bg-navy-light"
+              disabled={!selectedYearId || !selectedSemesterId}
+            >
+              {selectedSubjectId ? 'Apply Categories' : `Create "${parsedSubjectName || 'Subject'}" & Apply Categories`}
+            </Button>
+            <Button variant="outline" onClick={() => { setParsedCategories(null); setParsedSubjectName(''); setPdfParseError(null); }}>
+              Cancel
+            </Button>
+          </div>
+        </Card>
       )}
 
       {/* Academic Year Section */}
@@ -946,6 +1298,13 @@ export default function Grades() {
         ref={fileInputRef}
         onChange={handleFileUpload}
         accept=".csv"
+        style={{ display: 'none' }}
+      />
+      <input
+        type="file"
+        ref={pdfInputRef}
+        onChange={handlePdfUpload}
+        accept=".pdf"
         style={{ display: 'none' }}
       />
     </div>

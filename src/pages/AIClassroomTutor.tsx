@@ -34,6 +34,24 @@ interface Message {
       explanation: string;
     }>;
   };
+  whiteboardCommands?: WhiteboardCommand[];
+}
+
+interface WhiteboardCommand {
+  action: 'draw_text' | 'draw_rect' | 'draw_line' | 'draw_arrow' | 'draw_circle';
+  x: number;
+  y: number;
+  content?: string;
+  type?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  color?: string;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  radius?: number;
 }
 
 interface CustomCourseData {
@@ -53,6 +71,7 @@ const AIClassroomTutor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [whiteboardContent, setWhiteboardContent] = useState<string[]>([]);
+  const [whiteboardCommands, setWhiteboardCommands] = useState<WhiteboardCommand[]>([]);
   const [isWritingOnBoard, setIsWritingOnBoard] = useState(false);
   const [textToSpeak, setTextToSpeak] = useState<string | null>(null);
   const [teacherMood, setTeacherMood] = useState<'neutral' | 'happy' | 'thinking'>('neutral');
@@ -182,20 +201,44 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
       if (response.error) throw response.error;
 
       const assistantContent = response.data?.content || response.data?.message || 'I apologize, I had trouble processing that. Could you please rephrase?';
+      const whiteboardCommands = response.data?.whiteboardCommands || [];
       
-      const assistantMessage: Message = { role: 'assistant', content: assistantContent };
+      const assistantMessage: Message = { 
+        role: 'assistant', 
+        content: assistantContent,
+        whiteboardCommands: whiteboardCommands.length > 0 ? whiteboardCommands : undefined
+      };
       setMessages([...updatedMessages, assistantMessage]);
       setMessageCount(prev => prev + 1);
 
-      // Parse content for whiteboard
-      const lines = assistantContent.split('\n').filter((line: string) => 
-        line && (line.startsWith('##') || line.startsWith('•') || line.startsWith('-') || line.includes('='))
-      );
-      
-      if (lines.length > 0) {
+      // Use whiteboard commands from API if available, otherwise fall back to client-side parsing
+      if (whiteboardCommands && whiteboardCommands.length > 0) {
         setIsWritingOnBoard(true);
-        setWhiteboardContent(lines);
-        setTimeout(() => setIsWritingOnBoard(false), lines.length * 400 + 500);
+        setWhiteboardCommands(whiteboardCommands);
+        // Convert API commands to whiteboard content strings for display
+        const contentLines = whiteboardCommands
+          .filter(cmd => cmd.action === 'draw_text')
+          .map(cmd => {
+            if (cmd.type === 'header') return `## ${cmd.content}`;
+            if (cmd.type === 'equation') return cmd.content || '';
+            return `• ${cmd.content}`;
+          });
+        setWhiteboardContent(contentLines);
+        
+        // Execute whiteboard commands via ref or state
+        setTimeout(() => setIsWritingOnBoard(false), contentLines.length * 400 + 500);
+      } else {
+        setWhiteboardCommands([]);
+        // Fallback: client-side parsing for non-JSON responses
+        const lines = assistantContent.split('\n').filter((line: string) => 
+          line && (line.startsWith('##') || line.startsWith('•') || line.startsWith('-') || line.includes('='))
+        );
+        
+        if (lines.length > 0) {
+          setIsWritingOnBoard(true);
+          setWhiteboardContent(lines);
+          setTimeout(() => setIsWritingOnBoard(false), lines.length * 400 + 500);
+        }
       }
 
       // Speak the response (cleaned)
@@ -353,6 +396,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                 setSelectedCourse(null);
                 setMessages([]);
                 setWhiteboardContent([]);
+                setWhiteboardCommands([]);
                 setMessageCount(0);
                 setCustomCourseData(null);
               }}
@@ -529,6 +573,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                   content={whiteboardContent}
                   isDrawing={isWritingOnBoard}
                   onClear={() => setWhiteboardContent([])}
+                  commands={whiteboardCommands}
                 />
               </motion.div>
             )}

@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation limits
 const MAX_TEXT_LENGTH = 10000;
 const MIN_TEXT_LENGTH = 50;
 
@@ -24,7 +23,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT and get user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -49,7 +47,6 @@ serve(async (req) => {
 
     const { text } = await req.json();
     
-    // Validate text input
     if (!text || typeof text !== 'string') {
       return new Response(JSON.stringify({ error: 'Text is required and must be a string' }), {
         status: 400,
@@ -66,7 +63,6 @@ serve(async (req) => {
       });
     }
 
-    // Sanitize and limit text length
     const sanitizedText = trimmedText.substring(0, MAX_TEXT_LENGTH);
 
     const API_KEY = Deno.env.get('API_KEY');
@@ -81,7 +77,6 @@ serve(async (req) => {
 
     console.log('AI Detector request processed');
 
-    // Use AI to simulate multiple detector analyses
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -93,7 +88,49 @@ serve(async (req) => {
         messages: [
           { 
             role: 'system', 
-            content: `You are an AI content detection system. Analyze text to determine if it was written by AI or humans.
+            content: `You are an advanced AI content detection system with deep semantic analysis capabilities. Analyze text to determine if it was written by AI or humans.
+
+ENHANCED DETECTION CRITERIA - Go beyond surface-level heuristics:
+
+1. **Semantic Coherence Analysis**:
+   - Check for logical flow and argument progression
+   - Look for genuine problem-solving patterns vs formulaic responses
+   - Evaluate whether conclusions naturally emerge from premises
+
+2. **Deep Linguistic Patterns**:
+   - Analyze discourse markers usage frequency
+   - Check for semantic redundancy (repeating same ideas in different words)
+   - Evaluate lexical diversity beyond word frequency
+   - Look for hedging patterns and epistemic markers
+
+3. **Structural Analysis**:
+   - Evaluate paragraph-level organization
+   - Check for introduction-body-conclusion formula adherence
+   - Look for rhetorical question usage
+   - Analyze citation/evidence presentation patterns
+
+4. **Pragmatic Features**:
+   - Audience awareness and adaptation
+   - Tone consistency throughout
+   - Personal voice markers
+   - Engagement techniques
+
+5. **Advanced Heuristics to consider**:
+   - Perplexity: Low perplexity suggests AI (AI text is more predictable)
+   - Burstiness: Humans write with more variation in sentence length
+   - Vocabulary diversity: AI tends to use more common words
+   - Repetitive patterns: AI often repeats phrases or structures
+   - Perfect grammar: Excessive perfection may indicate AI
+   - Transitions: AI uses more formulaic transitions
+   - Personal anecdotes: Lack of personal stories suggests AI
+   - Emotional depth: AI often lacks genuine emotional nuance
+   - Generic examples: AI uses typical/template examples
+   - Over-explanation: AI tends to over-explain simple concepts
+
+6. **Confidence Calibration**:
+   - Scores should reflect genuine uncertainty when text is ambiguous
+   - Consider that some human writing can appear "AI-like" and vice versa
+   - Adjust confidence based on strength of indicators
 
 You must respond with ONLY valid JSON in this exact format (no markdown, no code blocks, just raw JSON):
 {
@@ -138,27 +175,18 @@ You must respond with ONLY valid JSON in this exact format (no markdown, no code
   ]
 }
 
-Analysis criteria:
-- Perplexity: Low perplexity suggests AI (AI text is more predictable)
-- Burstiness: Humans write with more variation in sentence length
-- Vocabulary diversity: AI tends to use more common words
-- Repetitive patterns: AI often repeats phrases or structures
-- Perfect grammar: Excessive perfection may indicate AI
-- Transitions: AI uses more formulaic transitions
-- Personal anecdotes: Lack of personal stories suggests AI
-- Emotional depth: AI often lacks genuine emotional nuance
-
 Each detector should have slightly different scores (within 10-15% of each other) to simulate real-world variation.
 The overallScore should be the weighted average of all detector scores.`
           },
           { 
             role: 'user', 
-            content: `Analyze this text for AI detection:\n\n${sanitizedText}` 
+            content: `Perform a deep semantic analysis on this text for AI detection. Consider all linguistic, structural, and pragmatic features:
+
+${sanitizedText}` 
           }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
       }),
-    });
 
     if (!response.ok) {
       console.error('AI gateway error:', response.status);
@@ -192,10 +220,8 @@ The overallScore should be the weighted average of all detector scores.`
       });
     }
 
-    // Parse the JSON response
     let result;
     try {
-      // Clean the response - remove any markdown code blocks if present
       const cleanedContent = content
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
@@ -203,7 +229,6 @@ The overallScore should be the weighted average of all detector scores.`
       result = JSON.parse(cleanedContent);
     } catch (parseError) {
       console.error('Failed to parse AI response');
-      // Return a fallback result
       result = {
         overallScore: 50,
         verdict: "Unable to Determine",

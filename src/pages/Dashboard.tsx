@@ -5,8 +5,6 @@ import {
   Clock, 
   CheckCircle,
   Target,
-  FileText,
-  Layers,
   Sparkles
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -126,12 +124,6 @@ export default function Dashboard() {
     },
   ];
 
-  const quickLinks = [
-    { title: 'AI Notes', description: 'Take smart notes with AI assistance', icon: FileText, path: '/notes', color: 'from-primary/10 to-sky/10' },
-    { title: 'Flashcards', description: 'Create and study flashcard decks', icon: Layers, path: '/flashcards', color: 'from-emerald/10 to-primary/10' },
-    { title: 'Final Grade Calc', description: 'Calculate your needed final grade', icon: Target, path: '/final-grade', color: 'from-amber/10 to-ruby/10' },
-  ];
-
   return (
     <div className="max-w-7xl mx-auto animate-in">
       {/* Header */}
@@ -172,39 +164,6 @@ export default function Dashboard() {
           </motion.div>
         ))}
       </div>
-
-      {/* Quick Links */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="mb-8"
-      >
-        <h2 className="text-xl font-display font-semibold mb-4">Quick Access</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {quickLinks.map((link, index) => (
-            <motion.a
-              key={link.title}
-              href={link.path}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + index * 0.05 }}
-            >
-              <Card className={`p-5 h-full bg-gradient-to-br ${link.color} border-0 hover:shadow-soft transition-all group cursor-pointer`}>
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-background/80">
-                    <link.icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold group-hover:text-primary transition-colors">{link.title}</h3>
-                    <p className="text-sm text-muted-foreground">{link.description}</p>
-                  </div>
-                </div>
-              </Card>
-            </motion.a>
-          ))}
-        </div>
-      </motion.div>
 
       {/* Subjects Overview */}
       <motion.div

@@ -3,13 +3,31 @@ import { motion } from 'framer-motion';
 import { Eraser, Pen, Type, Trash2, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+export interface WhiteboardCommand {
+  action: 'draw_text' | 'draw_rect' | 'draw_line' | 'draw_arrow' | 'draw_circle';
+  x: number;
+  y: number;
+  content?: string;
+  type?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  color?: string;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  radius?: number;
+}
+
 interface WhiteboardProps {
   content: string[];
   isDrawing: boolean;
   onClear: () => void;
+  commands?: WhiteboardCommand[];
 }
 
-export const Whiteboard = ({ content, isDrawing, onClear }: WhiteboardProps) => {
+export const Whiteboard = ({ content, isDrawing, onClear, commands = [] }: WhiteboardProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
@@ -52,6 +70,85 @@ export const Whiteboard = ({ content, isDrawing, onClear }: WhiteboardProps) => 
 
     return () => clearInterval(interval);
   }, [content]);
+
+  // Process AI whiteboard commands
+  useEffect(() => {
+    if (commands.length === 0 || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear canvas before drawing AI commands
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Execute commands sequentially with animation
+    commands.forEach((cmd, index) => {
+      setTimeout(() => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        switch (cmd.action) {
+          case 'draw_text':
+            ctx.font = `${cmd.size || 20}px sans-serif`;
+            ctx.fillStyle = cmd.color || '#1e293b';
+            if (cmd.type === 'header') {
+              ctx.font = `bold ${cmd.size || 28}px sans-serif`;
+              ctx.fillStyle = '#0f172a';
+            }
+            ctx.fillText(cmd.content || '', cmd.x, cmd.y);
+            break;
+            
+          case 'draw_rect':
+            ctx.fillStyle = cmd.color || '#e0f2fe';
+            ctx.fillRect(cmd.x, cmd.y, cmd.width || 100, cmd.height || 50);
+            ctx.strokeStyle = cmd.color || '#e0f2fe';
+            ctx.strokeRect(cmd.x, cmd.y, cmd.width || 100, cmd.height || 50);
+            break;
+            
+          case 'draw_line':
+            ctx.beginPath();
+            ctx.moveTo(cmd.x1 || cmd.x, cmd.y1 || cmd.y);
+            ctx.lineTo(cmd.x2 || cmd.x + 100, cmd.y2 || cmd.y);
+            ctx.strokeStyle = cmd.color || '#3b82f6';
+            ctx.lineWidth = cmd.width || 2;
+            ctx.stroke();
+            break;
+            
+          case 'draw_arrow':
+            const startX = cmd.x1 || cmd.x;
+            const startY = cmd.y1 || cmd.y;
+            const endX = cmd.x2 || cmd.x + 50;
+            const endY = cmd.y2 || cmd.y + 50;
+            
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = cmd.color || '#ef4444';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw arrowhead
+            const angle = Math.atan2(endY - startY, endX - startX);
+            const headLength = 10;
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - headLength * Math.cos(angle - Math.PI / 6), endY - headLength * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - headLength * Math.cos(angle + Math.PI / 6), endY - headLength * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+            break;
+            
+          case 'draw_circle':
+            ctx.beginPath();
+            ctx.arc(cmd.x, cmd.y, cmd.radius || 30, 0, 2 * Math.PI);
+            ctx.fillStyle = cmd.color || '#fef3c7';
+            ctx.fill();
+            break;
+        }
+      }, index * 300);
+    });
+  }, [commands]);
 
   const getCanvasCoords = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

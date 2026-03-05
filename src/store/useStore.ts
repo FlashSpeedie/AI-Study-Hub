@@ -14,30 +14,29 @@ import {
 } from '@/types';
 
 interface AppState {
-  // Auth
   user: User | null;
   isAuthenticated: boolean;
   darkMode: boolean;
   
-  // Grades
+  
   academicYears: AcademicYear[];
   selectedYearId: string | null;
   selectedSemesterId: string | null;
   selectedSubjectId: string | null;
   
-  // Tasks
+  
   tasks: Task[];
 
-  // Pomodoro
+  
   pomodoroMode: 'focus' | 'shortBreak' | 'longBreak';
   pomodoroTimeLeft: number;
   pomodoroIsRunning: boolean;
   pomodoroSessions: number;
 
-  // Quizzes
+  
   quizzes: Quiz[];
   
-  // Chat
+  
   chatMessages: ChatMessage[];
   
   // Actions - Auth

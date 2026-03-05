@@ -493,7 +493,9 @@ export default function LectureRecordings() {
             </p>
           </div>
           <Button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               setRecordingSubjectId(selectedSubjectId);
               setNewRecordingDialog(true);
             }}
@@ -512,7 +514,9 @@ export default function LectureRecordings() {
               Start recording your lectures to review them later.
             </p>
             <Button
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 setRecordingSubjectId(selectedSubjectId);
                 setNewRecordingDialog(true);
               }}
@@ -702,6 +706,7 @@ export default function LectureRecordings() {
                       e.stopPropagation();
                       setRecordingSubjectId(subject.id);
                       setSelectedSubjectId(subject.id);
+                      setRecordingSubjectId(subject.id);
                       setNewRecordingDialog(true);
                     }}
                   >

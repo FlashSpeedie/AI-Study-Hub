@@ -6,7 +6,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -21,7 +20,6 @@ serve(async (req) => {
 
     console.log('Generating task suggestions for prompt:', prompt);
 
-    // Get current date and time for due date calculations
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const currentHour = now.getHours();
@@ -117,7 +115,6 @@ Categories should be one of: Study, Review, Practice, Research, Writing, Organiz
     const data = await response.json();
     console.log('AI response:', JSON.stringify(data));
 
-    // Extract tool call result
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
       const parsed = JSON.parse(toolCall.function.arguments);

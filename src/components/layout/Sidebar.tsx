@@ -19,7 +19,8 @@ import {
   Menu,
   X,
   Shield,
-  Loader2
+  Loader2,
+  Gamepad2
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,17 +38,18 @@ const navItems = [
   { path: '/grades', icon: BookOpen, label: 'Grades' },
   { path: '/final-grade', icon: Target, label: 'Final Grade Calc' },
   { path: '/notes', icon: FileText, label: 'AI Notes' },
-  { path: '/flashcards', icon: Layers, label: 'Flashcards' },
-  { path: '/recordings', icon: Mic, label: 'Lecture Recordings' },
+  // { path: '/flashcards', icon: Layers, label: 'Flashcards' }, // Add a file upload option to take pdf and images from which it will generate quizzes and while adding a card add an option to upload images for front and back.
+  // { path: '/recordings', icon: Mic, label: 'Lecture Recordings' },
   { path: '/periodic-table', icon: Atom, label: 'Periodic Table' },
   { path: '/calculator', icon: Calculator, label: 'Math Engine' },
-  { path: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
+  // { path: '/ai-assistant', icon: Bot, label: 'AI Assistant' }, // ChatGPT/Gemini
   { path: '/ai-detector', icon: Shield, label: 'AI Detector' },
-  { path: '/quiz', icon: Brain, label: 'Quiz Architect' },
+  // { path: '/quiz', icon: Brain, label: 'Quiz Architect' }, // Keep a quiz history
   { path: '/pomodoro', icon: Timer, label: 'Pomodoro' },
   { path: '/tasks', icon: Sparkles, label: 'AI Tasks' },
-  { path: '/classroom', icon: School, label: 'AI Classroom' },
-  { path: '/classroom-helper', icon: HelpCircle, label: 'Classroom Helper' },
+  // { path: '/classroom', icon: School, label: 'AI Classroom' },
+  // { path: '/classroom-helper', icon: HelpCircle, label: 'Classroom Helper' },
+  // { path: '/games', icon: Gamepad2, label: 'Games' },
 ];
 
 export function Sidebar({ children }: SidebarProps) {

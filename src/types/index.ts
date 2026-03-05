@@ -1,5 +1,3 @@
-// OSSM Study Hub Types
-
 export interface User {
   id: string;
   email: string;
@@ -20,7 +18,7 @@ export interface Assignment {
 export interface Category {
   id: string;
   name: string;
-  weight: number; // Percentage weight (e.g., 60 for 60%)
+  weight: number;
   assignments: Assignment[];
 }
 
@@ -39,7 +37,7 @@ export interface Semester {
 
 export interface AcademicYear {
   id: string;
-  name: string; // e.g., "2025-2026"
+  name: string;
   semesters: Semester[];
 }
 
@@ -98,7 +96,6 @@ export interface Element {
   period: number;
 }
 
-// Utility functions
 export function calculateCategoryAverage(category: Category): number {
   if (category.assignments.length === 0) return 0;
   const total = category.assignments.reduce((sum, a) => sum + a.percentage, 0);

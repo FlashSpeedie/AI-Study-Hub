@@ -233,6 +233,24 @@
 }
 
 @layer utilities {
+  /* Global Scaling - Zoom out to increase data density without white edges */
+  .app-scaled {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  
+  .app-scaled .text-2xl {
+    font-size: 1.5rem;
+  }
+  
+  .app-scaled .text-3xl {
+    font-size: 2rem;
+  }
+  
+  .app-scaled .text-4xl {
+    font-size: 2.5rem;
+  }
+
   .animate-in {
     animation: animate-in 0.3s ease-out;
   }

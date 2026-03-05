@@ -9,10 +9,13 @@ import {
   GraduationCap,
   ChevronLeft,
   History,
-  Zap
+  Zap,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -64,10 +67,14 @@ const ClassroomHelper = () => {
   const [questions, setQuestions] = useState<QuestionEvent[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [muteAudio, setMuteAudio] = useState(false);
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastTranscriptRef = useRef<string>('');
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
 
   // Initialize speech recognition
   useEffect(() => {
@@ -75,7 +82,7 @@ const ClassroomHelper = () => {
       (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
-      toast.error('Speech recognition is not supported in your browser');
+      toast.error('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
       return;
     }
 
@@ -88,8 +95,10 @@ const ClassroomHelper = () => {
       const current = event.resultIndex;
       const transcript = event.results[current][0].transcript;
       
-      // Update current transcript display
+      // Update current transcript display (real-time subtitles)
       setCurrentTranscript(transcript);
+      setNetworkError(null); // Clear any network errors when we get results
+      retryCountRef.current = 0; // Reset retry count
 
       // Clear silence timer
       if (silenceTimerRef.current) {
@@ -98,24 +107,65 @@ const ClassroomHelper = () => {
 
       // Set timer to process after silence
       silenceTimerRef.current = setTimeout(() => {
-        if (transcript !== lastTranscriptRef.current) {
+        if (transcript !== lastTranscriptRef.current && transcript.trim().length > 0) {
           lastTranscriptRef.current = transcript;
           processTranscript(transcript);
+          setCurrentTranscript(''); // Clear transcript after processing
         }
-      }, 2000);
+      }, 1500);
     };
 
     recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if ((event as unknown as { error?: string }).error === 'not-allowed') {
-        toast.error('Microphone access denied');
+      const errorEvent = event as unknown as { error?: string };
+      console.error('Speech recognition error:', errorEvent.error);
+      
+      if (errorEvent.error === 'not-allowed') {
+        toast.error('Microphone access denied. Please allow microphone access.');
         setIsListening(false);
+        setNetworkError('Microphone access denied');
+      } else if (errorEvent.error === 'network') {
+        setNetworkError('Network error. Please check your internet connection.');
+        toast.error('Network error. Please check your internet connection.');
+        
+        // Auto-retry logic
+        if (isListening && retryCountRef.current < maxRetries) {
+          retryCountRef.current++;
+          setIsRetrying(true);
+          setTimeout(() => {
+            try {
+              recognition.start();
+            } catch (e) {
+              console.error('Retry failed:', e);
+            }
+            setIsRetrying(false);
+          }, 2000);
+        }
+      } else if (errorEvent.error === 'no-speech') {
+        // This is normal, just means no speech detected recently
+        setNetworkError(null);
+      } else {
+        setNetworkError(`Speech recognition error: ${errorEvent.error}`);
       }
     };
 
     recognition.onend = () => {
+      // Only restart if we're still supposed to be listening
+      // and we haven't exceeded max retries for network errors
       if (isListening) {
-        recognition.start();
+        if (networkError && retryCountRef.current >= maxRetries) {
+          setIsListening(false);
+          toast.error('Speech recognition failed after multiple attempts. Please check your connection.');
+          return;
+        }
+        
+        // Small delay before restarting to avoid rapid restart loops
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('Failed to restart recognition:', e);
+          }
+        }, 500);
       }
     };
 
@@ -123,13 +173,17 @@ const ClassroomHelper = () => {
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors when stopping
+        }
       }
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
     };
-  }, [isListening]);
+  }, [isListening, networkError]);
 
   const processTranscript = async (transcript: string) => {
     setIsProcessing(true);
@@ -138,7 +192,7 @@ const ClassroomHelper = () => {
       const response = await supabase.functions.invoke('classroom-helper', {
         body: {
           transcript,
-          conversationHistory: questions.map(q => `Q: ${q.question} A: ${q.answer}`),
+          conversationHistory: questions.slice(0, 5).map(q => `Q: ${q.question} A: ${q.answer}`),
         },
       });
 
@@ -146,9 +200,11 @@ const ClassroomHelper = () => {
         throw response.error;
       }
 
-      const { result, isQuestion } = response.data;
+      const data = response.data as { result?: string; isQuestion?: boolean };
+      const result = data?.result || '';
+      const isQuestion = data?.isQuestion || false;
 
-      if (isQuestion) {
+      if (isQuestion && result && result !== 'NQA') {
         const newQuestion: QuestionEvent = {
           id: Date.now().toString(),
           question: transcript,
@@ -159,7 +215,7 @@ const ClassroomHelper = () => {
         setQuestions(prev => [newQuestion, ...prev]);
         toast.info('Question detected!', {
           description: result,
-          duration: 3000,
+          duration: 4000,
         });
 
         // Speak the answer if not muted
@@ -169,6 +225,7 @@ const ClassroomHelper = () => {
       }
     } catch (error) {
       console.error('Error processing transcript:', error);
+      toast.error('Failed to get answer. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -181,9 +238,9 @@ const ClassroomHelper = () => {
     window.speechSynthesis.cancel();
     
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.2;
+    utterance.rate = 1.1;
     utterance.pitch = 1;
-    utterance.volume = 0.8;
+    utterance.volume = 0.9;
     
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
@@ -199,13 +256,26 @@ const ClassroomHelper = () => {
     }
 
     if (isListening) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Ignore errors when stopping
+      }
       setIsListening(false);
+      setNetworkError(null);
+      retryCountRef.current = 0;
       toast.info('Classroom helper paused');
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
-      toast.success('Classroom helper active - listening for questions');
+      retryCountRef.current = 0;
+      setNetworkError(null);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        toast.success('Classroom helper active - listening for questions');
+      } catch (e) {
+        console.error('Failed to start recognition:', e);
+        toast.error('Failed to start listening. Please try again.');
+      }
     }
   }, [isListening]);
 
@@ -216,15 +286,26 @@ const ClassroomHelper = () => {
     toast.success('History cleared');
   };
 
-  const stopSpeaking = () => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+  const manualRetry = () => {
+    if (recognitionRef.current && !isListening) {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        setNetworkError(null);
+        retryCountRef.current = 0;
+        toast.success('Retrying connection...');
+      } catch (e) {
+        toast.error('Failed to retry. Please click the microphone button.');
+      }
     }
   };
 
+  // Get the latest answer
+  const latestAnswer = questions.length > 0 ? questions[0].answer : null;
+  const latestQuestion = questions.length > 0 ? questions[0].question : null;
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -267,7 +348,9 @@ const ClassroomHelper = () => {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col max-w-6xl mx-auto w-full p-4 gap-4">
+        
         {/* Main Control Card */}
         <Card className="border-2 border-primary/20">
           <CardContent className="pt-6">
@@ -323,37 +406,120 @@ const ClassroomHelper = () => {
                     Processing...
                   </div>
                 )}
+                {isRetrying && (
+                  <div className="flex items-center justify-center gap-2 mt-2 text-sm text-amber-500">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Retrying connection...
+                  </div>
+                )}
               </div>
 
-              {/* Current Transcript */}
-              {currentTranscript && (
+              {/* Network Error Display */}
+              {networkError && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="w-full max-w-lg p-3 rounded-lg bg-muted text-center"
+                  className="w-full max-w-lg p-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-center"
                 >
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium">Heard:</span> {currentTranscript}
-                  </p>
+                  <div className="flex items-center justify-center gap-2 text-amber-800 dark:text-amber-200">
+                    <WifiOff className="h-4 w-4" />
+                    <span className="text-sm font-medium">{networkError}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={manualRetry}
+                    className="mt-2"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Retry
+                  </Button>
                 </motion.div>
               )}
             </div>
           </CardContent>
         </Card>
 
+        {/* Subtitle Display (Bottom) */}
+        <Card className="border-2 border-primary/10 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="text-center">
+              <Badge variant="outline" className="mb-2">
+                <Wifi className="h-3 w-3 mr-1" />
+                Live Subtitles
+              </Badge>
+              {currentTranscript ? (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-lg text-foreground italic min-h-[2rem]"
+                >
+                  "{currentTranscript}"
+                </motion.p>
+              ) : (
+                <p className="text-sm text-muted-foreground min-h-[2rem]">
+                  {isListening ? 'Listening...' : 'Click the microphone to start'}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Answer Display */}
+        <Card className="border-2 border-emerald/20 bg-emerald/5">
+          <CardContent className="py-4">
+            <div className="text-center">
+              <Badge variant="default" className="mb-2 bg-emerald-600">
+                <Zap className="h-3 w-3 mr-1" />
+                Answer
+              </Badge>
+              {latestAnswer ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <p className="text-xl font-semibold text-foreground min-h-[2rem]">
+                    {latestAnswer}
+                  </p>
+                  {latestQuestion && (
+                    <p className="text-sm text-muted-foreground mt-2 italic">
+                      Question: "{latestQuestion}"
+                    </p>
+                  )}
+                  <div className="flex items-center justify-center gap-2 mt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => speakAnswer(latestAnswer)}
+                      disabled={isSpeaking}
+                    >
+                      <Volume2 className="h-4 w-4 mr-1" />
+                      {isSpeaking ? 'Speaking...' : 'Play Answer'}
+                    </Button>
+                  </div>
+                </motion.div>
+              ) : (
+                <p className="text-sm text-muted-foreground min-h-[2rem]">
+                  {isListening ? 'Waiting for questions...' : 'Start listening to see answers'}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Questions History */}
-        {questions.length > 0 && (
-          <div className="space-y-4">
+        {questions.length > 1 && (
+          <div className="space-y-4 mt-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Zap className="h-5 w-5 text-primary" />
-                Detected Questions ({questions.length})
+                <History className="h-5 w-5 text-primary" />
+                Previous Questions ({questions.length - 1})
               </h2>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               <AnimatePresence mode="popLayout">
-                {questions.map((item) => (
+                {questions.slice(1).map((item) => (
                   <motion.div
                     key={item.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -361,39 +527,25 @@ const ClassroomHelper = () => {
                     exit={{ opacity: 0, y: -20 }}
                     layout
                   >
-                    <Card className="overflow-hidden">
-                      <div className="flex">
-                        {/* Answer Section - Highlighted */}
-                        <div className="w-1/3 bg-gradient-to-br from-primary/10 to-emerald/10 p-4 flex flex-col justify-center border-r border-border">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="default" className="bg-primary">
-                              Answer
-                            </Badge>
-                            <button
-                              onClick={() => speakAnswer(item.answer)}
-                              disabled={isSpeaking}
-                              className="p-1 rounded hover:bg-white/50 transition-colors"
-                            >
-                              <Volume2 className="h-4 w-4 text-primary" />
-                            </button>
-                          </div>
-                          <p className="text-sm font-medium text-foreground leading-relaxed">
-                            {item.answer}
-                          </p>
+                    <Card className="p-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline" className="text-xs">
+                            {item.timestamp.toLocaleTimeString()}
+                          </Badge>
+                          <button
+                            onClick={() => speakAnswer(item.answer)}
+                            className="p-1 rounded hover:bg-muted transition-colors"
+                          >
+                            <Volume2 className="h-3 w-3 text-muted-foreground" />
+                          </button>
                         </div>
-
-                        {/* Question Section */}
-                        <div className="w-2/3 p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant="outline">Question</Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {item.timestamp.toLocaleTimeString()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground leading-relaxed">
-                            "{item.question}"
-                          </p>
-                        </div>
+                        <p className="text-sm text-muted-foreground italic">
+                          "{item.question}"
+                        </p>
+                        <p className="text-sm font-medium text-foreground">
+                          {item.answer}
+                        </p>
                       </div>
                     </Card>
                   </motion.div>

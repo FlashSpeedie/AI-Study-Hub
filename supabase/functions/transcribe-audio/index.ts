@@ -19,7 +19,6 @@ serve(async (req) => {
       throw new Error('No audio file provided');
     }
 
-    // Check file size (max 20MB for Lovable)
     const fileSizeMB = audioFile.size / (1024 * 1024);
     if (fileSizeMB > 20) {
       throw new Error('Audio file too large. Maximum size is 20MB.');
@@ -30,12 +29,10 @@ serve(async (req) => {
       throw new Error('API_KEY not configured');
     }
 
-    // Convert audio to base64
     const audioBytes = await audioFile.arrayBuffer();
     const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBytes)));
     const audioFormat = audioFile.type.split('/')[1] || 'webm';
 
-    // Use Lovable AI with Gemini which supports audio input
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {

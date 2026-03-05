@@ -23,13 +23,11 @@ serve(async (req) => {
             throw new Error('API_KEY not configured');
         }
 
-        // Build conversation context
         let contextText = '';
         if (conversationHistory && conversationHistory.length > 0) {
             contextText = `\n\nPrevious conversation:\n${conversationHistory.join('\n')}`;
         }
 
-        // Use Lovable AI to detect questions and provide answers
         const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -72,7 +70,6 @@ Is this a question? If yes, provide a short direct answer. If no, respond with "
         const data = await response.json();
         const result = data?.choices?.[0]?.message?.content?.trim() || '';
 
-        // Check if it's a question or not
         const isQuestion = result !== 'NQA';
 
         return new Response(

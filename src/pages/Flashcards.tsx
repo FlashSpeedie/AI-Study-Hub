@@ -250,21 +250,36 @@ export default function Flashcards() {
     }
 
     setGenerating(true);
+    
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
     try {
       const { data, error } = await supabase.functions.invoke('generate-flashcards', {
         body: { topic: aiPrompt, count: 5 },
       });
 
+      clearTimeout(timeoutId);
+
       if (error) {
         console.error('Function error:', error);
-        throw error;
+        // Check if it's a timeout
+        if (error.message?.includes('abort') || error.message?.includes('timed out')) {
+          toast.error('Request timed out. Please try again.');
+        } else {
+          toast.error('Failed to generate flashcards. Please try again.');
+        }
+        return;
       }
 
       if (data?.error) {
         if (data.error.includes('429') || data.error.includes('Rate limit')) {
           toast.error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402')) {
+        } else if (data.error.includes('402') || data.error.includes('credits')) {
           toast.error('Please add credits to your workspace.');
+        } else if (data.error.includes('timed out') || data.error.includes('timeout')) {
+          toast.error('Request timed out. Please try again.');
         } else {
           toast.error(data.error);
         }
@@ -273,12 +288,25 @@ export default function Flashcards() {
 
       const { flashcards } = data;
       
-      const newCards = (flashcards || []).map((fc: { front: string; back: string }) => ({
-        id: crypto.randomUUID(),
-        front: fc.front,
-        back: fc.back,
-        mastered: false,
-      }));
+      // Validate flashcards format
+      if (!flashcards || !Array.isArray(flashcards)) {
+        toast.error('Invalid response from AI. Please try again.');
+        return;
+      }
+
+      const newCards = flashcards
+        .filter((fc: unknown) => fc && typeof fc === 'object' && 'front' in fc && 'back' in fc)
+        .map((fc: { front: string; back: string }) => ({
+          id: crypto.randomUUID(),
+          front: String(fc.front || '').trim(),
+          back: String(fc.back || '').trim(),
+          mastered: false,
+        }));
+
+      if (newCards.length === 0) {
+        toast.error('No valid flashcards generated. Please try a different topic.');
+        return;
+      }
 
       const updatedDeck = {
         ...selectedDeck,
@@ -292,8 +320,14 @@ export default function Flashcards() {
       toast.success(`Generated ${newCards.length} flashcards!`);
     } catch (error) {
       console.error('Error generating flashcards:', error);
-      toast.error('Failed to generate flashcards');
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('Request timed out. Please try again.');
+      } else {
+        toast.error('Failed to generate flashcards. Please try again.');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
     }
   };

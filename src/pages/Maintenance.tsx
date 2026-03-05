@@ -10,7 +10,6 @@ const Maintenance = () => {
   const location = useLocation();
   const { darkMode } = useStore();
 
-  // Extract the test path from query params or use default
   const searchParams = new URLSearchParams(location.search);
   const testPath = searchParams.get('path') || '/classroom-helper';
 
@@ -28,7 +27,6 @@ const Maintenance = () => {
         <Card className="border-2 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
           <CardContent className="pt-8 pb-8">
             <div className="text-center space-y-6">
-              {/* Icon */}
               <motion.div
                 animate={{ rotate: [0, -10, 10, -10, 0] }}
                 transition={{ duration: 2, repeat: Infinity }}
@@ -37,7 +35,6 @@ const Maintenance = () => {
                 <Wrench className="w-10 h-10 text-amber-600 dark:text-amber-400" />
               </motion.div>
 
-              {/* Title */}
               <div>
                 <h1 className="text-2xl font-bold text-foreground mb-2">
                   Under Maintenance
@@ -47,7 +44,6 @@ const Maintenance = () => {
                 </p>
               </div>
 
-              {/* Test Info */}
               <div className="bg-muted rounded-lg p-4 text-left">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -58,13 +54,11 @@ const Maintenance = () => {
                 </p>
               </div>
 
-              {/* Status */}
               <div className="flex items-center justify-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 <span className="text-muted-foreground">Feature in development</span>
               </div>
 
-              {/* Back Button */}
               <Button
                 variant="outline"
                 onClick={() => window.history.back()}
@@ -76,7 +70,6 @@ const Maintenance = () => {
           </CardContent>
         </Card>
 
-        {/* Debug Info */}
         <div className="mt-4 p-4 rounded-lg bg-muted/50 text-center">
           <p className="text-xs text-muted-foreground">
             Dark Mode: {darkMode ? 'ON' : 'OFF'}

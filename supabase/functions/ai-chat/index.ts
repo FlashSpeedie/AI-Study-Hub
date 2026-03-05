@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation limits
 const MAX_MESSAGE_LENGTH = 10000;
 const MAX_MESSAGES = 50;
 
@@ -16,7 +15,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT and get user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -41,7 +39,6 @@ serve(async (req) => {
 
     const { messages } = await req.json();
     
-    // Validate messages input
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Invalid messages format' }), {
         status: 400,
@@ -56,7 +53,6 @@ serve(async (req) => {
       });
     }
 
-    // Validate and sanitize each message
     const sanitizedMessages = messages.map((msg: any) => {
       if (!msg || typeof msg !== 'object') {
         throw new Error('Invalid message structure');

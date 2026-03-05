@@ -17,7 +17,6 @@ const getCorsHeaders = (origin: string) => {
   };
 };
 
-// Input validation limits
 const MAX_TOPIC_LENGTH = 500;
 const MAX_COUNT = 20;
 const MIN_COUNT = 1;
@@ -31,7 +30,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT and get user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -56,7 +54,6 @@ serve(async (req) => {
 
     const { topic, count = 5 } = await req.json();
 
-    // Validate and sanitize inputs
     const sanitizedTopic = typeof topic === 'string' ? topic.substring(0, MAX_TOPIC_LENGTH).trim() : '';
 
     if (!sanitizedTopic) {
@@ -66,7 +63,6 @@ serve(async (req) => {
       });
     }
 
-    // Validate count
     let validCount = parseInt(String(count), 10);
     if (isNaN(validCount) || validCount < MIN_COUNT) {
       validCount = MIN_COUNT;
@@ -74,7 +70,7 @@ serve(async (req) => {
       validCount = MAX_COUNT;
     }
 
-    const API_KEY = Deno.env.get('API_KEY');
+    const API_KEY = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('API_KEY');
 
     if (!API_KEY) {
       console.error('API_KEY is not configured');
@@ -136,10 +132,8 @@ Only return the JSON array, no other text.`;
 
     console.log('Flashcard generation completed');
 
-    // Parse the JSON from the response
     let flashcards;
     try {
-      // Try to extract JSON from the response
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         flashcards = JSON.parse(jsonMatch[0]);

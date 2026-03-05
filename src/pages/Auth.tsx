@@ -10,7 +10,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-// Validation schemas
 const emailSchema = z.string().email('Please enter a valid email address').max(255, 'Email is too long');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters').max(72, 'Password is too long');
 const usernameSchema = z.string().min(2, 'Username must be at least 2 characters').max(50, 'Username is too long');
@@ -28,7 +27,6 @@ export default function Auth() {
     username: '',
   });
 
-  // Check if user is already authenticated
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
@@ -36,7 +34,6 @@ export default function Auth() {
       }
     });
 
-    // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         navigate('/dashboard', { replace: true });
@@ -82,7 +79,6 @@ export default function Auth() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate inputs
     try {
       emailSchema.parse(formData.email);
       passwordSchema.parse(formData.password);
@@ -114,7 +110,6 @@ export default function Auth() {
           return;
         }
 
-        // If remember me is checked, session persists longer (handled by Supabase automatically)
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         } else {
@@ -158,7 +153,6 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-navy via-navy-light to-navy-dark relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-72 h-72 bg-emerald rounded-full blur-3xl" />
@@ -204,14 +198,12 @@ export default function Auth() {
         </div>
       </div>
 
-      {/* Right Side - Auth Form */}
       <div className="flex-1 flex items-center justify-center p-8">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           className="w-full max-w-md"
         >
-          {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <GraduationCap className="w-7 h-7 text-primary-foreground" />
@@ -236,7 +228,6 @@ export default function Auth() {
             </p>
           </div>
 
-          {/* Forgot Password Form */}
           {isForgotPassword ? (
             <form onSubmit={handleForgotPassword} className="space-y-4">
               <div className="space-y-2">
@@ -342,7 +333,6 @@ export default function Auth() {
               </div>
             </div>
 
-            {/* Remember Me & Forgot Password */}
             {isLogin && (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

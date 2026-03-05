@@ -24,8 +24,9 @@ import QuizGenerator from "./pages/QuizGenerator";
 import Pomodoro from "./pages/Pomodoro";
 import AITaskManager from "./pages/AITaskManager";
 import AIClassroomTutor from "./pages/AIClassroomTutor";
-import Maintenance from "./pages/Maintenance";
+import ClassroomHelper from "./pages/ClassroomHelper";
 import LectureRecordings from "./pages/LectureRecordings";
+import BusinessEmpire from "./pages/BusinessEmpire";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,13 +41,11 @@ function AppRoutes() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setLoading(false);
     });
 
-    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
@@ -79,8 +78,9 @@ function AppRoutes() {
       <Route path="/pomodoro" element={<ProtectedRoute session={session}><Pomodoro /></ProtectedRoute>} />
       <Route path="/tasks" element={<ProtectedRoute session={session}><AITaskManager /></ProtectedRoute>} />
       <Route path="/classroom" element={<ProtectedRoute session={session}><AIClassroomTutor /></ProtectedRoute>} />
-      <Route path="/classroom-helper" element={<ProtectedRoute session={session}><Maintenance /></ProtectedRoute>} />
+      <Route path="/classroom-helper" element={<ProtectedRoute session={session}><ClassroomHelper /></ProtectedRoute>} />
       <Route path="/recordings" element={<ProtectedRoute session={session}><LectureRecordings /></ProtectedRoute>} />
+      <Route path="/games" element={<ProtectedRoute session={session}><BusinessEmpire /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -91,12 +91,14 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <BackgroundTimer />
-        <MiniPomodoroPreview />
-        <MiniTaskPreview />
-        <AppRoutes />
-      </BrowserRouter>
+      <div className="app-scaled">
+        <BrowserRouter>
+          <BackgroundTimer />
+          <MiniPomodoroPreview />
+          <MiniTaskPreview />
+          <AppRoutes />
+        </BrowserRouter>
+      </div>
     </TooltipProvider>
   </QueryClientProvider>
 );

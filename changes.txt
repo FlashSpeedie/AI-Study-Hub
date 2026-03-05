@@ -1,0 +1,13 @@
+Changes to work on
+ - Minimize the entire website everything like zoom out
+ - Remove quick access from dashboard
+ - In Grades feature add an AI option to upload a pdf with the syllabus for that subject in grades in each subject and it will automatically get the exact categories for each labelled thing and write it like tell it to send the pdf and instruction extract the only weightage and the category for it and write it in the format and it automatically adds it and check whether the total weightage adds upto 100% weightage.
+ - In AI Notes feature add another text box below with a label when I click summarize outline like seperate for each whenever each is created and save it like that so that when opened it isa saved and when I click it again it will regenerate it in that same box.
+ - Also the export button should only export in pdf everything properly formatted nothing like $ and stuff.
+ - When I use AI to generate flashcards it says Failed to generate flashcards fix it permanently and make it actually working.
+ - The lecture recording says this after I complete recording Edge Function returned a non-2xx status code also when I click start recording it doesnt show until I click the back button then it shows the popup to name the recording fix that and everything else for this feature test everything and then fix it.
+ - For the periodic table add a button to guess or like to drag and drop or like write the elements name for there icon vice versa or something to memeroize the periodic table add multiple games
+ - Enhance the AI detector make it more accurate and the humanizer also like enhance 
+ - Enhance the AI classroom completely and make sure the conversation and the white board is different like tell the ai to write the conversation and then later write the coordinates or command or something to write thjings on the white board properly everything formatted.
+ -  Enhance the classroom helper have the captions below and auto recognize the pause and then give that to the ai to answer or to talk below but in the background still continue recording continue recording,
+ 

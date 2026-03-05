@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
-// Allowed origins for CORS
 const allowedOrigins = [
   'https://hchfnnicseujpbkrxpxm.lovableproject.com',
   'http://localhost:5173',
@@ -17,7 +16,6 @@ const getCorsHeaders = (origin: string) => {
   };
 };
 
-// Input validation limits
 const MAX_TOPIC_LENGTH = 500;
 const MAX_FILE_CONTENT_LENGTH = 50000;
 const MAX_QUESTION_COUNT = 20;
@@ -32,7 +30,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT and get user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -57,11 +54,9 @@ serve(async (req) => {
 
     const { topic, questionCount, fileContent } = await req.json();
     
-    // Validate and sanitize inputs
     const sanitizedTopic = typeof topic === 'string' ? topic.substring(0, MAX_TOPIC_LENGTH).trim() : '';
     const sanitizedFileContent = typeof fileContent === 'string' ? fileContent.substring(0, MAX_FILE_CONTENT_LENGTH) : '';
     
-    // Validate question count
     let validQuestionCount = parseInt(String(questionCount), 10);
     if (isNaN(validQuestionCount) || validQuestionCount < MIN_QUESTION_COUNT) {
       validQuestionCount = MIN_QUESTION_COUNT;
@@ -69,7 +64,6 @@ serve(async (req) => {
       validQuestionCount = MAX_QUESTION_COUNT;
     }
 
-    // Ensure at least one input is provided
     if (!sanitizedTopic && !sanitizedFileContent) {
       return new Response(JSON.stringify({ error: 'Topic or file content is required' }), {
         status: 400,
@@ -162,10 +156,8 @@ For true-false, correctAnswer must be "True" or "False".`
     
     console.log('Quiz generation completed');
 
-    // Parse the JSON from the response
     let questions;
     try {
-      // Clean up the response - remove markdown code blocks if present
       let cleanContent = content.trim();
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.slice(7);
