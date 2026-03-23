@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
+
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format, isBefore, parseISO, differenceInMinutes } from 'date-fns';
@@ -272,27 +273,28 @@ export default function AITaskManager() {
       }
 
       const { data, error } = await supabase.functions.invoke('ai-task-suggest', {
-        body: { prompt: aiPrompt }
+        body: { context: aiPrompt, existingTasks: tasks.map(t => t.title) }
       });
 
-      if (error) {
-        console.error('Function error:', error);
-        throw error;
+      if (error) throw error;
+      const reply = data?.result;
+
+      if (!reply) {
+        throw new Error('No response from AI');
       }
 
-      if (data?.error) {
-        if (data.error.includes('429') || data.error.includes('Rate limit')) {
-          toast.error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402')) {
-          toast.error('Please add credits to your workspace.');
-        } else {
-          toast.error(data.error);
-        }
-        return;
-      }
+      const parsedData = JSON.parse(reply);
 
-      if (data?.suggestions) {
-        setSuggestions(data.suggestions);
+      if (Array.isArray(parsedData)) {
+        const suggestions = parsedData.map((task: any) => ({
+          title: task.title,
+          priority: task.priority || 'medium',
+          category: task.category || 'General',
+          suggested_due_date: task.due_date || null,
+          suggested_time: task.suggested_time || null,
+          estimated_duration: task.duration || 30,
+        }));
+        setSuggestions(suggestions);
         toast.success('AI generated task suggestions!');
       }
     } catch (error: any) {

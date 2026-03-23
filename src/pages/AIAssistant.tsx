@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+
 import ChatHistorySidebar, { Conversation } from '@/components/chat/ChatHistorySidebar';
 import { formatAIResponse } from '@/lib/utils';
 
@@ -227,30 +228,18 @@ export default function AIAssistant() {
       }
 
       const { data, error } = await supabase.functions.invoke('ai-chat', {
-        body: {
+        body: { 
           messages: [...messages, { role: 'user', content: userContent }].map(m => ({
             role: m.role,
             content: m.content,
-          })),
-        },
+          }))
+        }
       });
 
-      if (error) {
-        console.error('Function error:', error);
-        throw error;
-      }
+      if (error) throw error;
+      const reply = data?.result;
 
-      if (data?.error) {
-        if (data.error.includes('429') || data.error.includes('Rate limit')) {
-          throw new Error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402')) {
-          throw new Error('Please add credits to your workspace.');
-        } else {
-          throw new Error(data.error);
-        }
-      }
-
-      const assistantContent = data?.response || '';
+      const assistantContent = reply;
       const assistantMessageId = Date.now().toString() + '-assistant';
 
       // Add assistant message

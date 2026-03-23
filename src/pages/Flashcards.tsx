@@ -25,9 +25,19 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
+
 import { toast } from 'sonner';
 import { Json } from '@/integrations/supabase/types';
 import { formatAIResponse } from '@/lib/utils';
+
+// Helper function to strip markdown code fences before parsing JSON
+function cleanJsonResponse(raw: string): string {
+  return raw
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+}
 
 interface Flashcard {
   id: string;
@@ -257,36 +267,16 @@ export default function Flashcards() {
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-flashcards', {
-        body: { topic: aiPrompt, count: 5 },
+        body: { topic: aiPrompt, count: 10 }
       });
+
+      if (error) throw error;
+      const reply = data?.result;
 
       clearTimeout(timeoutId);
 
-      if (error) {
-        console.error('Function error:', error);
-        // Check if it's a timeout
-        if (error.message?.includes('abort') || error.message?.includes('timed out')) {
-          toast.error('Request timed out. Please try again.');
-        } else {
-          toast.error('Failed to generate flashcards. Please try again.');
-        }
-        return;
-      }
-
-      if (data?.error) {
-        if (data.error.includes('429') || data.error.includes('Rate limit')) {
-          toast.error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402') || data.error.includes('credits')) {
-          toast.error('Please add credits to your workspace.');
-        } else if (data.error.includes('timed out') || data.error.includes('timeout')) {
-          toast.error('Request timed out. Please try again.');
-        } else {
-          toast.error(data.error);
-        }
-        return;
-      }
-
-      const { flashcards } = data;
+      const cleaned = cleanJsonResponse(reply);
+      const flashcards = JSON.parse(cleaned);
       
       // Validate flashcards format
       if (!flashcards || !Array.isArray(flashcards)) {

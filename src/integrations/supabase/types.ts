@@ -284,11 +284,56 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          message: string
+          type: string
+          read: boolean
+          link: string | null
+          source_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          message: string
+          type?: string
+          read?: boolean
+          link?: string | null
+          source_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          message?: string
+          type?: string
+          read?: boolean
+          link?: string | null
+          source_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
           id: string
+          onboarding_completed: boolean | null
           updated_at: string
           username: string | null
         }
@@ -296,6 +341,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           id: string
+          onboarding_completed?: boolean | null
           updated_at?: string
           username?: string | null
         }
@@ -303,6 +349,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           id?: string
+          onboarding_completed?: boolean | null
           updated_at?: string
           username?: string | null
         }

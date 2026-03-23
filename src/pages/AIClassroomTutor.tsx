@@ -21,6 +21,7 @@ import { CustomCourseUpload } from '@/components/classroom/CustomCourseUpload';
 import { LessonQuiz } from '@/components/classroom/LessonQuiz';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+
 import { formatAIResponse } from '@/lib/utils';
 
 interface Message {
@@ -136,10 +137,9 @@ Keep responses concise but educational. You are patient, encouraging, and passio
     if (messages.length < 2) return null;
 
     try {
-      const response = await supabase.functions.invoke('ai-classroom-tutor', {
-        body: {
-          messages: [{ role: 'user', content: 'Generate a quick 3-question quiz based on what we just discussed.' }],
-          systemPrompt: `Based on this conversation, generate exactly 3 multiple choice questions to test understanding.
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { 
+          messages: [{ role: 'user', content: `Based on this conversation, generate exactly 3 multiple choice questions to test understanding.
           
 Previous conversation:
 ${messages.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n')}
@@ -154,17 +154,15 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
       "explanation": "Brief explanation of why this is correct"
     }
   ]
-}`,
-          course: selectedCourse,
-          generateQuiz: true,
-        },
+}` }]
+        }
       });
 
-      if (response.error) throw response.error;
+      if (error) throw error;
+      const reply = data?.result;
 
-      const content = response.data?.content || '';
       try {
-        const quizData = JSON.parse(content.replace(/```json\n?|\n?```/g, '').trim());
+        const quizData = JSON.parse(reply.replace(/```json\n?|\n?```/g, '').trim());
         return quizData;
       } catch {
         return null;
@@ -173,7 +171,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
       console.error('Quiz generation error:', error);
       return null;
     }
-  }, [messages, selectedCourse]);
+  }, [messages]);
 
   const sendMessage = useCallback(async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return;
@@ -190,18 +188,20 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     setTeacherMood('thinking');
 
     try {
-      const response = await supabase.functions.invoke('ai-classroom-tutor', {
-        body: {
-          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
-          systemPrompt: getSystemPrompt(),
-          course: selectedCourse,
-        },
+      const { data, error } = await supabase.functions.invoke('ai-classroom-tutor', {
+        body: { 
+          message: userMessage,
+          course: course?.name || 'General',
+          conversationHistory: messages,
+          whiteboardContent: whiteboardContent
+        }
       });
 
-      if (response.error) throw response.error;
+      if (error) throw error;
+      const reply = data?.result;
 
-      const assistantContent = response.data?.content || response.data?.message || 'I apologize, I had trouble processing that. Could you please rephrase?';
-      const whiteboardCommands = response.data?.whiteboardCommands || [];
+      const assistantContent = reply || 'I apologize, I had trouble processing that. Could you please rephrase?';
+      const whiteboardCommands: WhiteboardCommand[] = [];
       
       const assistantMessage: Message = { 
         role: 'assistant', 

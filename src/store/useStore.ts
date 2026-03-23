@@ -12,6 +12,7 @@ import {
   User,
   generateId 
 } from '@/types';
+import * as gradesSyncService from '@/services/gradesSyncService';
 
 interface AppState {
   user: User | null;
@@ -38,6 +39,14 @@ interface AppState {
   
   
   chatMessages: ChatMessage[];
+  
+  // Grades Sync State
+  gradesSyncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+  gradesSyncError: string | null;
+  lastSyncedAt: string | null;
+  setGradesSyncStatus: (status: 'idle' | 'syncing' | 'synced' | 'error') => void;
+  setGradesSyncError: (error: string | null) => void;
+  setLastSyncedAt: (time: string | null) => void;
   
   // Actions - Auth
   login: (user: User) => void;
@@ -132,6 +141,14 @@ export const useStore = create<AppState>()(
       quizzes: [],
       chatMessages: [],
 
+      // Grades Sync State
+      gradesSyncStatus: 'idle',
+      gradesSyncError: null,
+      lastSyncedAt: null,
+      setGradesSyncStatus: (status) => set({ gradesSyncStatus: status }),
+      setGradesSyncError: (error) => set({ gradesSyncError: error }),
+      setLastSyncedAt: (time) => set({ lastSyncedAt: time }),
+
       // Auth Actions
       login: (user) => set({ user, isAuthenticated: true }),
       logout: () => set({ user: null, isAuthenticated: false }),
@@ -152,23 +169,62 @@ export const useStore = create<AppState>()(
           name,
           semesters: [],
         };
+        // 1. Update local state immediately (optimistic)
         set((state) => ({
           academicYears: [...state.academicYears, newYear],
           selectedYearId: state.selectedYearId || newYear.id,
         }));
+        
+        // 2. Sync to Supabase async (non-blocking)
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.saveAcademicYear(userId, newYear).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync academic year to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            } else {
+              get().setGradesSyncStatus('synced');
+              get().setLastSyncedAt(new Date().toLocaleTimeString());
+            }
+          });
+        }
       },
       updateAcademicYear: (id, name) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === id ? { ...y, name } : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        const year = get().academicYears.find(y => y.id === id);
+        if (userId && year) {
+          gradesSyncService.saveAcademicYear(userId, { ...year, name }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync academic year update to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            }
+          });
+        }
       },
       deleteAcademicYear: (id) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.filter((y) => y.id !== id),
           selectedYearId: state.selectedYearId === id ? null : state.selectedYearId,
         }));
+        
+        // 2. Delete from Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.deleteAcademicYear(userId, id).then(({ error }) => {
+            if (error) console.error('Failed to delete academic year from cloud:', error);
+          });
+        }
       },
       setSelectedYear: (id) => set({ selectedYearId: id, selectedSemesterId: null, selectedSubjectId: null }),
 
@@ -179,6 +235,7 @@ export const useStore = create<AppState>()(
           name,
           subjects: [],
         };
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -187,8 +244,21 @@ export const useStore = create<AppState>()(
           ),
           selectedSemesterId: state.selectedSemesterId || newSemester.id,
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.saveSemester(userId, { ...newSemester, academic_year_id: yearId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync semester to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            }
+          });
+        }
       },
       updateSemester: (yearId, semesterId, name) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -201,8 +271,22 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        const year = get().academicYears.find(y => y.id === yearId);
+        const semester = year?.semesters.find(s => s.id === semesterId);
+        if (userId && semester) {
+          gradesSyncService.saveSemester(userId, { ...semester, name, academic_year_id: yearId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync semester update to cloud:', error);
+              get().setGradesSyncStatus('error');
+            }
+          });
+        }
       },
       deleteSemester: (yearId, semesterId) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -211,6 +295,14 @@ export const useStore = create<AppState>()(
           ),
           selectedSemesterId: state.selectedSemesterId === semesterId ? null : state.selectedSemesterId,
         }));
+        
+        // 2. Delete from Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.deleteSemester(userId, semesterId).then(({ error }) => {
+            if (error) console.error('Failed to delete semester from cloud:', error);
+          });
+        }
       },
       setSelectedSemester: (id) => set({ selectedSemesterId: id, selectedSubjectId: null }),
 
@@ -222,6 +314,7 @@ export const useStore = create<AppState>()(
           color: color || getNextColor(),
           categories: [],
         };
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -236,8 +329,21 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.saveSubject(userId, { ...newSubject, semester_id: semesterId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync subject to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            }
+          });
+        }
       },
       updateSubject: (yearId, semesterId, subjectId, name) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -257,8 +363,23 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        const year = get().academicYears.find(y => y.id === yearId);
+        const semester = year?.semesters.find(s => s.id === semesterId);
+        const subject = semester?.subjects.find(s => s.id === subjectId);
+        if (userId && subject) {
+          gradesSyncService.saveSubject(userId, { ...subject, name, semester_id: semesterId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync subject update to cloud:', error);
+              get().setGradesSyncStatus('error');
+            }
+          });
+        }
       },
       deleteSubject: (yearId, semesterId, subjectId) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -274,6 +395,14 @@ export const useStore = create<AppState>()(
           ),
           selectedSubjectId: state.selectedSubjectId === subjectId ? null : state.selectedSubjectId,
         }));
+        
+        // 2. Delete from Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.deleteSubject(userId, subjectId).then(({ error }) => {
+            if (error) console.error('Failed to delete subject from cloud:', error);
+          });
+        }
       },
       setSelectedSubject: (id) => set({ selectedSubjectId: id }),
 
@@ -285,6 +414,7 @@ export const useStore = create<AppState>()(
           weight,
           assignments: [],
         };
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -306,8 +436,21 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.saveCategory(userId, { ...newCategory, subject_id: subjectId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync category to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            }
+          });
+        }
       },
       updateCategory: (yearId, semesterId, subjectId, categoryId, name, weight) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -334,8 +477,24 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        const year = get().academicYears.find(y => y.id === yearId);
+        const semester = year?.semesters.find(s => s.id === semesterId);
+        const subject = semester?.subjects.find(s => s.id === subjectId);
+        const category = subject?.categories.find(c => c.id === categoryId);
+        if (userId && category) {
+          gradesSyncService.saveCategory(userId, { ...category, name, weight, subject_id: subjectId }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync category update to cloud:', error);
+              get().setGradesSyncStatus('error');
+            }
+          });
+        }
       },
       deleteCategory: (yearId, semesterId, subjectId, categoryId) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -357,6 +516,14 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Delete from Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.deleteCategory(userId, categoryId).then(({ error }) => {
+            if (error) console.error('Failed to delete category from cloud:', error);
+          });
+        }
       },
 
       // Assignment Actions
@@ -369,6 +536,7 @@ export const useStore = create<AppState>()(
           percentage: totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0,
           createdAt: new Date(),
         };
+        // 1. Update local state immediately (optimistic)
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -397,8 +565,27 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase async (non-blocking)
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.saveAssignment(userId, {
+            ...newAssignment,
+            category_id: categoryId,
+          }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync assignment to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            } else {
+              get().setGradesSyncStatus('synced');
+              get().setLastSyncedAt(new Date().toLocaleTimeString());
+            }
+          });
+        }
       },
       updateAssignment: (yearId, semesterId, subjectId, categoryId, assignmentId, name, earnedPoints, totalPoints) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -440,8 +627,31 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Sync to Supabase
+        const userId = get().user?.id;
+        const year = get().academicYears.find(y => y.id === yearId);
+        const semester = year?.semesters.find(s => s.id === semesterId);
+        const subject = semester?.subjects.find(s => s.id === subjectId);
+        const category = subject?.categories.find(c => c.id === categoryId);
+        const assignment = category?.assignments.find(a => a.id === assignmentId);
+        if (userId && assignment) {
+          gradesSyncService.saveAssignment(userId, {
+            ...assignment,
+            earnedPoints,
+            totalPoints,
+            category_id: categoryId,
+          }).then(({ error }) => {
+            if (error) {
+              console.error('Failed to sync assignment update to cloud:', error);
+              get().setGradesSyncStatus('error');
+              get().setGradesSyncError('Failed to save to cloud — data is safe locally');
+            }
+          });
+        }
       },
       deleteAssignment: (yearId, semesterId, subjectId, categoryId, assignmentId) => {
+        // 1. Update local state
         set((state) => ({
           academicYears: state.academicYears.map((y) =>
             y.id === yearId
@@ -470,6 +680,14 @@ export const useStore = create<AppState>()(
               : y
           ),
         }));
+        
+        // 2. Delete from Supabase
+        const userId = get().user?.id;
+        if (userId) {
+          gradesSyncService.deleteAssignment(userId, assignmentId).then(({ error }) => {
+            if (error) console.error('Failed to delete assignment from cloud:', error);
+          });
+        }
       },
 
       // Task Actions

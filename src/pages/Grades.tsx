@@ -10,10 +10,13 @@ import {
   Trash2,
   ChevronUp,
   ExternalLink,
-  AlertTriangle,
   Upload,
   FileText,
-  Loader2
+  Loader2,
+  CheckCircle,
+  AlertTriangle,
+  RotateCcw,
+  AlertCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +37,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useStore } from '@/store/useStore';
+import { supabase } from '@/integrations/supabase/client';
+import * as gradesSyncService from '@/services/gradesSyncService';
 import {
   calculateSubjectGrade,
   calculateCategoryAverage,
@@ -45,6 +50,7 @@ import {
 } from '@/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import type { AcademicYear } from '@/types';
 
 export default function Grades() {
   const {
@@ -70,6 +76,12 @@ export default function Grades() {
     addAssignment,
     updateAssignment,
     deleteAssignment,
+    gradesSyncStatus,
+    gradesSyncError,
+    lastSyncedAt,
+    setGradesSyncStatus,
+    setGradesSyncError,
+    setLastSyncedAt,
   } = useStore();
 
   // Dialog states
@@ -96,14 +108,109 @@ export default function Grades() {
     }
   }, []);
 
+  // Sync grades on mount
+  useEffect(() => {
+    const syncGrades = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      setGradesSyncStatus('syncing');
+      const result = await gradesSyncService.syncGradesToSupabase(session.user.id, academicYears);
+      
+      if (result.error) {
+        setGradesSyncStatus('error');
+        setGradesSyncError(result.error);
+      } else if (result.data) {
+        // Update store with synced data
+        useStore.setState({ academicYears: result.data });
+        setGradesSyncStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString());
+      } else {
+        setGradesSyncStatus('idle');
+      }
+    };
+
+    syncGrades();
+  }, []);
+
   // Get current data
   const currentYear = academicYears.find(y => y.id === selectedYearId);
   const currentSemester = currentYear?.semesters.find(s => s.id === selectedSemesterId);
   const currentSubject = currentSemester?.subjects.find(s => s.id === selectedSubjectId);
 
+  // Retry sync handler
+  const handleRetrySync = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setGradesSyncStatus('syncing');
+    setGradesSyncError(null);
+    const result = await gradesSyncService.syncGradesToSupabase(
+      session.user.id, 
+      academicYears
+    );
+    if (result.error) {
+      setGradesSyncStatus('error');
+      setGradesSyncError(result.error);
+    } else if (result.data) {
+      useStore.setState({ academicYears: result.data });
+      setGradesSyncStatus('synced');
+      setLastSyncedAt(new Date().toLocaleTimeString());
+    }
+  };
+
   // Calculate weight validation
   const totalWeight = currentSubject ? getTotalCategoryWeight(currentSubject) : 0;
   const weightWarning = currentSubject && currentSubject.categories.length > 0 && totalWeight !== 100;
+
+  // Sync Status Bar UI
+  const renderSyncStatusBar = () => {
+    if (gradesSyncStatus === 'syncing') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-blue-600 
+          bg-blue-50 dark:bg-blue-950/20 border border-blue-200 
+          dark:border-blue-800 rounded-lg px-4 py-2 mb-4">
+          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+          <span>Syncing your grades to cloud...</span>
+        </div>
+      );
+    }
+    
+    if (gradesSyncStatus === 'synced' && lastSyncedAt) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-green-600 
+          bg-green-50 dark:bg-green-950/20 border border-green-200 
+          dark:border-green-800 rounded-lg px-4 py-2 mb-4">
+          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+          <span>All grades saved to cloud · Last synced {lastSyncedAt}</span>
+        </div>
+      );
+    }
+    
+    if (gradesSyncStatus === 'error') {
+      return (
+        <div className="flex items-center justify-between text-sm text-red-600 
+          bg-red-50 dark:bg-red-950/20 border border-red-200 
+          dark:border-red-800 rounded-lg px-4 py-2 mb-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {gradesSyncError || 'Could not sync grades — your data is safe locally'}
+            </span>
+          </div>
+          <button
+            onClick={handleRetrySync}
+            className="text-xs font-medium underline hover:no-underline 
+              ml-4 flex-shrink-0"
+            aria-label="Retry sync"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    
+    return null;
+  };
 
   // Handlers
   const handleSaveYear = () => {
@@ -970,6 +1077,56 @@ If you cannot find clear grading information, still try to identify any mentione
         <h1 className="text-3xl font-display font-bold mb-2">Grades</h1>
         <p className="text-muted-foreground">Track your academic performance across all subjects</p>
       </div>
+      
+      {/* Sync Status Bar */}
+      {renderSyncStatusBar()}
+
+      {/* Sync Status Bar */}
+      {gradesSyncStatus === 'syncing' && (
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+          <span className="text-sm text-blue-700 dark:text-blue-300">Syncing grades to cloud...</span>
+        </div>
+      )}
+      {gradesSyncStatus === 'synced' && (
+        <div className="mb-4 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          <span className="text-sm text-green-700 dark:text-green-300">
+            All grades saved · Last synced {lastSyncedAt}
+          </span>
+        </div>
+      )}
+      {gradesSyncStatus === 'error' && (
+        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 text-red-600" />
+          <span className="text-sm text-red-700 dark:text-red-300 flex-1">
+            Could not sync — data is safe locally
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) {
+                setGradesSyncStatus('syncing');
+                const result = await gradesSyncService.syncGradesToSupabase(session.user.id, academicYears);
+                if (result.error) {
+                  setGradesSyncStatus('error');
+                  setGradesSyncError(result.error);
+                } else if (result.data) {
+                  useStore.setState({ academicYears: result.data });
+                  setGradesSyncStatus('synced');
+                  setLastSyncedAt(new Date().toLocaleTimeString());
+                }
+              }
+            }}
+            className="gap-1"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* {selectedSemesterId && (
         <div className="flex gap-2 mb-4">

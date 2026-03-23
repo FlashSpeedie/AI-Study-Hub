@@ -1,162 +1,90 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
+// @ts-nocheck - Deno-specific code that uses URL imports
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-// Allowed origins for CORS
-const allowedOrigins = [
-  'https://hchfnnicseujpbkrxpxm.lovableproject.com',
-  'http://localhost:5173',
-  'http://localhost:8080',
-];
-
-const getCorsHeaders = (origin: string) => {
-  const allowedOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
-  };
-};
-
-const MAX_TOPIC_LENGTH = 500;
-const MAX_COUNT = 20;
-const MIN_COUNT = 1;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 
+    'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 
 serve(async (req) => {
-  const origin = req.headers.get('origin') || '';
-  const corsHeaders = getCorsHeaders(origin);
-
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
+    if (!GROQ_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'GROQ_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const body = await req.json()
+    const { topic, count } = body
+    const questionCount = count || 10
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const systemPrompt = `You are a flashcard generator. Generate educational
+   flashcards for studying. You must respond with ONLY
+   a raw JSON array. No markdown, no code fences, no
+   backticks, no explanation. Just the JSON array.
+   Format: [{front: string, back: string}]`
+
+    const userMessage = `Generate ${questionCount} flashcards about: ${topic}`
+
+    const response = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7,
+        }),
+      }
+    )
+
+    // Rate limit handling
+    if (response.status === 429) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit reached. Please try again in a moment.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
-
-    const { topic, count = 5 } = await req.json();
-
-    const sanitizedTopic = typeof topic === 'string' ? topic.substring(0, MAX_TOPIC_LENGTH).trim() : '';
-
-    if (!sanitizedTopic) {
-      return new Response(JSON.stringify({ error: 'Topic is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    let validCount = parseInt(String(count), 10);
-    if (isNaN(validCount) || validCount < MIN_COUNT) {
-      validCount = MIN_COUNT;
-    } else if (validCount > MAX_COUNT) {
-      validCount = MAX_COUNT;
-    }
-
-    const API_KEY = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('API_KEY');
-
-    if (!API_KEY) {
-      console.error('API_KEY is not configured');
-      return new Response(JSON.stringify({ error: 'Service configuration error' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const systemPrompt = `You are an expert educator creating flashcards for students. Generate exactly ${validCount} flashcards about the given topic. Each flashcard should have a clear, concise question or term on the front and a comprehensive but not overly long answer on the back.
-
-Return your response as a JSON array with this exact format:
-[
-  { "front": "Question or term", "back": "Answer or definition" },
-  ...
-]
-
-Only return the JSON array, no other text.`;
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Create flashcards about: ${sanitizedTopic}` }
-        ],
-      }),
-    });
 
     if (!response.ok) {
-      console.error('AI gateway error:', response.status);
-
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please wait a moment and try again.' }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }), {
-          status: 402,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      return new Response(JSON.stringify({ error: 'AI service temporarily unavailable' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      const error = await response.text()
+      console.error('Groq API error:', error)
+      return new Response(
+        JSON.stringify({ error: 'AI service temporarily unavailable.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '[]';
-
-    console.log('Flashcard generation completed');
-
-    let flashcards;
-    try {
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        flashcards = JSON.parse(jsonMatch[0]);
-      } else {
-        flashcards = JSON.parse(content);
-      }
-    } catch (parseError) {
-      console.error('Failed to parse flashcards:', parseError, content);
-      return new Response(JSON.stringify({ error: 'Failed to generate valid flashcards' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const data = await response.json()
+    const content = data.choices[0].message.content
 
     return new Response(
-      JSON.stringify({ flashcards }),
+      JSON.stringify({ result: content }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    )
+
   } catch (error) {
-    console.error('Flashcard generation error:', error);
-    return new Response(JSON.stringify({ error: 'An error occurred processing your request' }), {
-      status: 500,
-      headers: { ...getCorsHeaders(req.headers.get('origin') || ''), 'Content-Type': 'application/json' },
-    });
+    console.error('Error in generate-flashcards:', error)
+    return new Response(
+      JSON.stringify({ error: String(error) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

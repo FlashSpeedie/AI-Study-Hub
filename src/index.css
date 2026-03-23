@@ -23,9 +23,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Deep Navy Primary */
-    --primary: 222 47% 20%;
-    --primary-foreground: 210 40% 98%;
+    /* Indigo/Purple Primary */
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
 
     /* Slate Secondary */
     --secondary: 215 16% 47%;
@@ -80,15 +80,15 @@
     --grade-d: 25 95% 53%;
     --grade-f: 0 72% 51%;
 
-    /* Sidebar */
-    --sidebar-background: 222 47% 15%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 160 84% 45%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 222 40% 22%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 40% 25%;
-    --sidebar-ring: 160 84% 45%;
+    /* Sidebar - Light Theme */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222 47% 15%;
+    --sidebar-primary: 258 90% 66%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 222 47% 15%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 258 90% 66%;
   }
 
   .dark {
@@ -101,8 +101,8 @@
     --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217 32% 20%;
     --secondary-foreground: 210 40% 98%;

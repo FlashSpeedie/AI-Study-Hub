@@ -25,6 +25,7 @@ export interface Category {
 export interface Subject {
   id: string;
   name: string;
+  teacher?: string;
   color: string;
   categories: Category[];
 }

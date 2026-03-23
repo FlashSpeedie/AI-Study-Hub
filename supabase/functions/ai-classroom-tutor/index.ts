@@ -1,139 +1,115 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-nocheck - Deno-specific code that uses URL imports
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 
+    'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { messages, systemPrompt, course, generateQuiz } = await req.json();
-
-    const API_KEY = Deno.env.get("API_KEY");
-    if (!API_KEY) {
-      throw new Error("API_KEY is not configured");
+    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
+    if (!GROQ_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'GROQ_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // Enhanced system prompt for whiteboard commands
-    const enhancedSystemPrompt = `${systemPrompt}
+    const body = await req.json()
+    const { message, course, conversationHistory, whiteboardContent } = body
 
-IMPORTANT: When explaining concepts that would benefit from visual aid, you must respond with a structured JSON format that includes both your natural language explanation AND explicit whiteboard drawing commands.
+    if (!message || !message.trim()) {
+      return new Response(
+        JSON.stringify({ error: 'Message is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-Format your response as JSON (no markdown code blocks):
-{
-  "dialogue": "Your natural language explanation and conversation here...",
-  "whiteboard_commands": [
-    // For headers/titles on the whiteboard:
-    { "action": "draw_text", "x": 50, "y": 30, "content": "Main Topic Header", "type": "header", "size": 28 },
-    
-    // For bullet points:
-    { "action": "draw_text", "x": 50, "y": 100, "content": "• First key point here", "type": "bullet", "size": 18 },
-    { "action": "draw_text", "x": 50, "y": 140, "content": "• Second key point here", "type": "bullet", "size": 18 },
-    
-    // For equations/formulas:
-    { "action": "draw_text", "x": 50, "y": 200, "content": "E = mc²", "type": "equation", "size": 24 },
-    
-    // For highlighting important concepts:
-    { "action": "draw_rect", "x": 40, "y": 250, "width": 400, "height": 60, "color": "#e0f2fe" },
-    { "action": "draw_text", "x": 50, "y": 270, "content": "Important Concept!", "type": "highlight", "size": 20 },
-    
-    // For diagrams/visual elements:
-    { "action": "draw_line", "x1": 100, "y1": 300, "x2": 300, "y2": 300, "color": "#3b82f6", "width": 2 },
-    
-    // For connecting arrows:
-    { "action": "draw_arrow", "x1": 150, "y1": 250, "x2": 200, "y2": 300, "color": "#ef4444" },
-    
-    // For circles/emphasis:
-    { "action": "draw_circle", "x": 200, "y": 200, "radius": 30, "color": "#fef3c7" }
-  ]
-}
+    const systemPrompt = `You are an expert AI classroom tutor teaching ${course || 'general subjects'}.
+   You explain concepts clearly with examples, ask
+   comprehension questions, and adapt to the student's
+   level. Be encouraging, patient, and thorough.
+   When appropriate, describe what you would write on
+   a whiteboard by prefixing with [WHITEBOARD]: `
 
-Guidelines for whiteboard_commands:
-- Use "draw_text" for all text (headers use size 24-32, bullets use size 16-20, equations use size 20-24)
-- Use x coordinates from 20-700 and y coordinates from 30-500 for positioning
-- For multiple items, increment y by 35-40 for each bullet point
-- Use "draw_rect" with light background colors (#e0f2fe, #fef3c7, #dcfce7) for highlighting boxes
-- Use "draw_line" for lines and dividers
-- Use "draw_arrow" for pointing to relationships
-- Use "draw_circle" for emphasis circles
-- Only include whiteboard_commands when you actually want to draw something
-- The dialogue should contain your full explanation
+    // Build conversation messages
+    const messages: { role: string; content: string }[] = [
+      { role: 'system', content: systemPrompt }
+    ]
 
-If you don't need to draw anything, respond with just:
-{ "dialogue": "Your response here...", "whiteboard_commands": [] }`;
+    // Add conversation history if provided
+    if (conversationHistory && conversationHistory.length > 0) {
+      for (const msg of conversationHistory) {
+        messages.push({ role: msg.role, content: msg.content })
+      }
+    }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: enhancedSystemPrompt },
-          ...messages,
-        ],
-        max_tokens: generateQuiz ? 800 : 2048,
-        temperature: generateQuiz ? 0.3 : 0.7,
-      }),
-    });
+    // Add whiteboard context if provided
+    if (whiteboardContent && whiteboardContent.length > 0) {
+      messages.push({
+        role: 'system',
+        content: `Current whiteboard content: ${whiteboardContent.join('\n')}`
+      })
+    }
+
+    // Add current user message
+    messages.push({ role: 'user', content: message })
+
+    const response = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: messages,
+          max_tokens: 2000,
+          temperature: 0.7,
+        }),
+      }
+    )
+
+    // Rate limit handling
+    if (response.status === 429) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit reached. Please try again in a moment.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please wait and try again." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      throw new Error(`AI gateway error: ${response.status}`);
+      const error = await response.text()
+      console.error('Groq API error:', error)
+      return new Response(
+        JSON.stringify({ error: 'AI service temporarily unavailable.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const data = await response.json();
-    const rawContent = data.choices?.[0]?.message?.content || "I couldn't generate a response.";
-
-    // Try to parse the response as JSON to extract whiteboard commands
-    let content = rawContent;
-    let whiteboardCommands: any[] = [];
-    
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = rawContent.match(/\{[\s\S]*"dialogue"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        content = parsed.dialogue || rawContent;
-        whiteboardCommands = parsed.whiteboard_commands || [];
-      }
-    } catch (parseError) {
-      // If parsing fails, treat the whole response as dialogue and use client-side parsing
-      console.log("Response was not in JSON format, using client-side parsing");
-    }
+    const data = await response.json()
+    const content = data.choices[0].message.content
 
     return new Response(
-      JSON.stringify({ content, whiteboardCommands, course }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      JSON.stringify({ result: content }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
 
   } catch (error) {
-    console.error("Error:", error);
+    console.error('Error in ai-classroom-tutor:', error)
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      JSON.stringify({ error: String(error) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

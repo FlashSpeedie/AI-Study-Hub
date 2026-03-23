@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
+
 // Speech Recognition types
 interface SpeechRecognitionEvent extends Event {
   resultIndex: number;
@@ -189,20 +190,20 @@ const ClassroomHelper = () => {
     setIsProcessing(true);
     
     try {
-      const response = await supabase.functions.invoke('classroom-helper', {
-        body: {
-          transcript,
-          conversationHistory: questions.slice(0, 5).map(q => `Q: ${q.question} A: ${q.answer}`),
-        },
+      const historyContext = questions.slice(0, 5).map(q => `Q: ${q.question} A: ${q.answer}`).join('\n');
+      
+      const { data, error } = await supabase.functions.invoke('classroom-helper', {
+        body: { 
+          question: transcript,
+          context: historyContext
+        }
       });
 
-      if (response.error) {
-        throw response.error;
-      }
+      if (error) throw error;
+      const reply = data?.result;
 
-      const data = response.data as { result?: string; isQuestion?: boolean };
-      const result = data?.result || '';
-      const isQuestion = data?.isQuestion || false;
+      const result = (reply || '').trim();
+      const isQuestion = result !== 'NQA' && result.length > 0;
 
       if (isQuestion && result && result !== 'NQA') {
         const newQuestion: QuestionEvent = {

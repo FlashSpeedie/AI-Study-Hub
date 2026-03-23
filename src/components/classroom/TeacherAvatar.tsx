@@ -142,8 +142,8 @@ export const TeacherAvatar = ({ isSpeaking, mood = 'neutral', isActive = true }:
           {!blinkState && (
             <>
               <motion.circle
-                cx="72"
-                cy="94"
+                cx={72}
+                cy={94}
                 r="5"
                 fill="hsl(222 40% 30%)"
                 animate={{ 
@@ -152,8 +152,8 @@ export const TeacherAvatar = ({ isSpeaking, mood = 'neutral', isActive = true }:
                 }}
               />
               <motion.circle
-                cx="128"
-                cy="94"
+                cx={128}
+                cy={94}
                 r="5"
                 fill="hsl(222 40% 30%)"
                 animate={{ 
@@ -181,6 +181,8 @@ export const TeacherAvatar = ({ isSpeaking, mood = 'neutral', isActive = true }:
                 ? 'M 58 74 Q 72 70 86 74'
                 : 'M 58 72 Q 72 68 86 72'
           }}
+          // eslint-disable-next-line react/no-unknown-property
+          layout={false}
         />
         <motion.path
           d="M 114 72 Q 128 68 142 72"
@@ -195,6 +197,8 @@ export const TeacherAvatar = ({ isSpeaking, mood = 'neutral', isActive = true }:
                 ? 'M 114 74 Q 128 70 142 74'
                 : 'M 114 72 Q 128 68 142 72'
           }}
+          // eslint-disable-next-line react/no-unknown-property
+          layout={false}
         />
 
         {/* Nose */}
@@ -206,7 +210,7 @@ export const TeacherAvatar = ({ isSpeaking, mood = 'neutral', isActive = true }:
 
         {/* Mouth */}
         <motion.path
-          d={mouthPaths[mouthFrame]}
+          d={mouthPaths[mouthFrame] ?? mouthPaths[0]}
           stroke="hsl(0 60% 45%)"
           strokeWidth="3"
           fill={mouthFrame > 1 ? "hsl(0 40% 35%)" : "none"}

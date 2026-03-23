@@ -154,7 +154,7 @@ export default function ChatHistorySidebar({
                     className={cn(
                       "w-full text-left px-3 py-2.5 rounded-lg transition-all",
                       "hover:bg-muted/50 flex items-start gap-2",
-                      activeConversationId === conv.id && "bg-primary/10 border-l-2 border-primary"
+                      activeConversationId === conv.id && "bg-primary/15 text-primary border-l-2 border-primary"
                     )}
                   >
                     <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />

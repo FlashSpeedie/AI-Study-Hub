@@ -164,12 +164,16 @@ export default function Auth() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <div className="w-24 h-24 rounded-2xl bg-emerald/20 backdrop-blur-sm flex items-center justify-center mb-8 mx-auto border border-emerald/30">
-              <GraduationCap className="w-12 h-12 text-emerald" />
+            <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center mb-8 mx-auto shadow-xl">
+              <span className="text-white font-black text-5xl">A</span>
             </div>
-            <h1 className="text-4xl font-display font-bold text-primary-foreground mb-4">
-              AI Study Hub
+            <h1 className="text-5xl font-black tracking-tight bg-gradient-to-r 
+              from-primary to-purple-400 bg-clip-text text-transparent">
+              APEX
             </h1>
+            <p className="text-sm text-muted-foreground tracking-widest uppercase mt-2">
+              AI Study Hub
+            </p>
             <p className="text-xl text-primary-foreground/80 mb-8 max-w-md">
               Your comprehensive educational companion for academic excellence
             </p>
@@ -205,10 +209,10 @@ export default function Auth() {
           className="w-full max-w-md"
         >
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-              <GraduationCap className="w-7 h-7 text-primary-foreground" />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg">
+              <span className="text-white font-black text-xl">A</span>
             </div>
-            <h1 className="text-2xl font-display font-bold">AI Study Hub</h1>
+            <h1 className="text-2xl font-black bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">APEX</h1>
           </div>
 
           <div className="text-center mb-8">

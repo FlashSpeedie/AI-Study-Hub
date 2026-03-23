@@ -1,98 +1,100 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-nocheck - Deno-specific code that uses URL imports
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 
+    'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 
 serve(async (req) => {
-    if (req.method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders });
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
+    if (!GROQ_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'GROQ_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    try {
-        const { transcript, conversationHistory } = await req.json();
+    const body = await req.json()
+    const { question, subject, context } = body
 
-        if (!transcript) {
-            throw new Error('No transcript provided');
-        }
-
-        const API_KEY = Deno.env.get('API_KEY');
-        if (!API_KEY) {
-            throw new Error('API_KEY not configured');
-        }
-
-        let contextText = '';
-        if (conversationHistory && conversationHistory.length > 0) {
-            contextText = `\n\nPrevious conversation:\n${conversationHistory.join('\n')}`;
-        }
-
-        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: 'google/gemini-2.5-flash',
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are a classroom assistant helping students during lectures. Your job is to:
-1. Listen to what the teacher said
-2. If it's a question, provide a SHORT, DIRECT answer (1-2 sentences max)
-3. If it's not a question (just statement/explanation), respond with "NQA"
-4. Always be concise - students need quick answers during class
-
-Response format:
-- For questions: Just give the answer, no explanations
-- For non-questions: Respond with exactly "NQA" (Not a Question)`
-                    },
-                    {
-                        role: 'user',
-                        content: `Teacher said: "${transcript}"${contextText}
-
-Is this a question? If yes, provide a short direct answer. If no, respond with "NQA".`
-                    }
-                ],
-                max_tokens: 150,
-                temperature: 0.3,
-            }),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Question detection API error:', errorText);
-            throw new Error('Failed to analyze lecture');
-        }
-
-        const data = await response.json();
-        const result = data?.choices?.[0]?.message?.content?.trim() || '';
-
-        const isQuestion = result !== 'NQA';
-
-        return new Response(
-            JSON.stringify({
-                result,
-                isQuestion,
-                success: true
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to process lecture';
-        console.error('Error in classroom-helper function:', error);
-        return new Response(
-            JSON.stringify({
-                error: errorMessage,
-                success: false
-            }),
-            {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            }
-        );
+    if (!question || !question.trim()) {
+      return new Response(
+        JSON.stringify({ error: 'Question is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
-});
+
+    const systemPrompt = `You are a helpful classroom assistant for students.
+   Answer questions clearly and concisely, provide
+   examples when helpful, and encourage deeper learning.`
+
+    let userMessage = question
+    if (subject) {
+      userMessage = `[Subject: ${subject}]\n\n${question}`
+    }
+    if (context) {
+      userMessage += `\n\nContext: ${context}`
+    }
+
+    const response = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 1500,
+          temperature: 0.7,
+        }),
+      }
+    )
+
+    // Rate limit handling
+    if (response.status === 429) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit reached. Please try again in a moment.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error('Groq API error:', error)
+      return new Response(
+        JSON.stringify({ error: 'AI service temporarily unavailable.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const data = await response.json()
+    const content = data.choices[0].message.content
+
+    return new Response(
+      JSON.stringify({ result: content }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    console.error('Error in classroom-helper:', error)
+    return new Response(
+      JSON.stringify({ error: String(error) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})

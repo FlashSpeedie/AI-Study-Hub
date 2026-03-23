@@ -1,102 +1,157 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-nocheck - Deno-specific code that uses URL imports
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+
+const authHeader = req.headers.get('Authorization')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+  'Access-Control-Allow-Headers': 
+    'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+// Maximum allowed file size (25MB)
+const MAX_FILE_SIZE = 25 * 1024 * 1024
+
+// Allowed audio MIME types
+const ALLOWED_AUDIO_TYPES = [
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/wav',
+  'audio/webm',
+  'audio/ogg',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/aac',
+]
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  // Validate Content-Type
+  const contentType = req.headers.get('content-type') || ''
+  if (!contentType.includes('multipart/form-data')) {
+    return new Response(
+      JSON.stringify({ error: 'Content-Type must be multipart/form-data' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 
   try {
-    const formData = await req.formData();
-    const audioFile = formData.get('audio') as File;
+    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
+    if (!GROQ_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'GROQ_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
+    // Get the audio file from the request
+    const formData = await req.formData()
+    const audioFile = formData.get('audio')
+    
     if (!audioFile) {
-      throw new Error('No audio file provided');
+      return new Response(
+        JSON.stringify({ error: 'No audio file provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const fileSizeMB = audioFile.size / (1024 * 1024);
-    if (fileSizeMB > 20) {
-      throw new Error('Audio file too large. Maximum size is 20MB.');
+    // Validate it's a File object
+    if (!(audioFile instanceof File)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid file format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const API_KEY = Deno.env.get('API_KEY');
-    if (!API_KEY) {
-      throw new Error('API_KEY not configured');
+    // Validate file size
+    if (audioFile.size > MAX_FILE_SIZE) {
+      return new Response(
+        JSON.stringify({ error: 'File too large. Maximum size is 25MB.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const audioBytes = await audioFile.arrayBuffer();
-    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBytes)));
-    const audioFormat = audioFile.type.split('/')[1] || 'webm';
+    // Validate file type
+    const fileType = audioFile.type || ''
+    const isAudioType = ALLOWED_AUDIO_TYPES.some(type => 
+      fileType.includes(type.replace('audio/', ''))
+    )
+    
+    // Also check if file extension suggests audio (fallback)
+    const fileName = audioFile.name.toLowerCase()
+    const hasAudioExtension = fileName.endsWith('.mp3') || 
+                              fileName.endsWith('.mp4') || 
+                              fileName.endsWith('.wav') || 
+                              fileName.endsWith('.webm') || 
+                              fileName.endsWith('.ogg') || 
+                              fileName.endsWith('.m4a') ||
+                              fileName.endsWith('.aac')
+    
+    if (!isAudioType && !hasAudioExtension && fileType !== '') {
+      return new Response(
+        JSON.stringify({ error: 'Invalid file type. Please upload an audio file.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Please transcribe this audio file accurately. Return ONLY the transcription text without any additional comments or formatting. If there is no speech or the audio is unclear, return an empty string.'
-              },
-              {
-                type: 'audio',
-                audio: {
-                  data: base64Audio,
-                  format: audioFormat
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 4096,
-        temperature: 0.1,
-      }),
-    });
+    // Forward to Groq Whisper
+    const groqForm = new FormData()
+    groqForm.append('file', audioFile)
+    groqForm.append('model', 'whisper-large-v3-turbo')
+    groqForm.append('response_format', 'json')
+
+    const response = await fetch(
+      'https://api.groq.com/openai/v1/audio/transcriptions',
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
+        body: groqForm,
+      }
+    )
+
+    // Rate limit handling
+    if (response.status === 429) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit reached. Please try again in a moment.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Transcription API error:', errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
-      } else if (response.status === 402) {
-        throw new Error('AI credits exhausted. Please add credits to continue.');
-      } else {
-        throw new Error('Failed to transcribe audio. Please try again.');
-      }
+      const error = await response.text()
+      console.error('Groq Whisper error:', error)
+      return new Response(
+        JSON.stringify({ error: 'Transcription failed. Please try again.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const data = await response.json();
-    const transcript = data?.choices?.[0]?.message?.content?.trim() || '';
-
+    const data = await response.json()
+    
+    // Validate response structure
+    if (!data.text) {
+      console.error('Unexpected response format:', data)
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from transcription service.' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    
     return new Response(
-      JSON.stringify({ transcript, success: true }),
+      JSON.stringify({ transcript: data.text }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    )
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to transcribe audio';
-    console.error('Error in transcribe-audio function:', error);
+  } catch (error) {
+    console.error('Error in transcribe-audio:', error)
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        success: false 
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+      JSON.stringify({ error: String(error) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

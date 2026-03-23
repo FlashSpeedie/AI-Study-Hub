@@ -264,50 +264,38 @@ export default function LectureRecordings() {
 
       toast.info('Transcribing audio...', { duration: 3000 });
 
+      // Create FormData for the audio file
+      const audioFile = new File([audioData], 'audio.webm', { type: 'audio/webm' });
       const formData = new FormData();
-      formData.append('audio', audioData, 'audio.webm');
+      formData.append('audio', audioFile);
 
       const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-        body: formData,
+        body: formData
       });
 
-      if (error) {
-        console.error('Function error:', error);
-        throw error;
-      }
-
-      if (data?.error) {
-        if (data.error.includes('429') || data.error.includes('Rate limit')) {
-          throw new Error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402')) {
-          throw new Error('Please add credits to your workspace.');
-        } else {
-          throw new Error(data.error);
-        }
-      }
+      if (error) throw error;
+      const transcript = data?.transcript || '';
       
-      if (data.success && data.transcript) {
+      if (transcript && transcript.trim()) {
         // Save transcript to database
         const { error } = await supabase
           .from('lecture_recordings')
-          .update({ transcript: data.transcript })
+          .update({ transcript })
           .eq('id', targetId);
 
         if (error) throw error;
 
         setRecordings(prev => prev.map(r =>
           r.id === targetId
-            ? { ...r, transcript: data.transcript }
+            ? { ...r, transcript }
             : r
         ));
         
         if (selectedRecording?.id === targetId) {
-          setSelectedRecording(prev => prev ? { ...prev, transcript: data.transcript } : null);
+          setSelectedRecording(prev => prev ? { ...prev, transcript } : null);
         }
         
         toast.success('Transcription complete');
-      } else if (data.warning || data.message) {
-        toast.info(data.message || data.warning);
       } else {
         toast.warning('Could not transcribe audio - no speech detected');
       }

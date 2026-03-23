@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { groqChat } from '@/services/groqService';
 import { cn } from '@/lib/utils';
 
 interface Recording {
@@ -110,12 +111,10 @@ export default function RecordingNotes({ recording, onSave, isTranscribing = fal
     setIsGenerating(true);
     setAiAction('summarize');
     try {
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
-        body: {
-          messages: [
-            {
-              role: 'user',
-              content: `Based on these lecture notes/transcript, please provide:
+      const content = await groqChat([
+        {
+          role: 'user',
+          content: `Based on these lecture notes/transcript, please provide:
 1. A concise summary (2-3 sentences)
 2. 3-5 key points/takeaways
 
@@ -130,15 +129,8 @@ KEY POINTS:
 - [Point 1]
 - [Point 2]
 - [Point 3]`
-            }
-          ],
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      const content = data?.response || '';
+        }
+      ], 'llama-3.3-70b-versatile');
 
       // Parse the response
       const summaryMatch = content.match(/SUMMARY:\s*([\s\S]*?)(?=KEY POINTS:|$)/i);
@@ -174,12 +166,10 @@ KEY POINTS:
     setIsGenerating(true);
     setAiAction('explain');
     try {
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
-        body: {
-          messages: [
-            {
-              role: 'user',
-              content: `Explain the following concept from the lecture in detail. Use simple language and provide examples if helpful.
+      const content = await groqChat([
+        {
+          role: 'user',
+          content: `Explain the following concept from the lecture in detail. Use simple language and provide examples if helpful.
 
 Context from lecture:
 ${notes || recording.transcript || 'No context available'}
@@ -187,17 +177,12 @@ ${notes || recording.transcript || 'No context available'}
 Concept to explain: ${concept}
 
 Provide a clear, educational explanation:`
-            }
-          ],
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+        }
+      ], 'llama-3.3-70b-versatile');
 
       toast.success('Explanation generated!');
       // Show explanation in a modal or expand a section
-      return data?.response || '';
+      return content || '';
     } catch (error) {
       console.error('Error explaining concept:', error);
       toast.error('Failed to explain concept');
@@ -218,27 +203,20 @@ Provide a clear, educational explanation:`
     setIsChatting(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
-        body: {
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful AI tutor helping the student understand their lecture recording.
+      const content = await groqChat([
+        {
+          role: 'system',
+          content: `You are a helpful AI tutor helping the student understand their lecture recording.
 Use the following context from the lecture when answering:
 ${notes || recording.transcript || 'No lecture content available'}
 
 Provide helpful, educational responses.`
-            },
-            ...chatMessages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-          ],
         },
-      });
+        ...chatMessages.map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage }
+      ], 'llama-3.3-70b-versatile');
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data?.response || 'I apologize, but I could not generate a response.' }]);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: content || 'I apologize, but I could not generate a response.' }]);
     } catch (error) {
       console.error('Error in chat:', error);
       setChatMessages(prev => [...prev, { role: 'assistant', content: 'I apologize, but I encountered an error. Please try again.' }]);

@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -414,28 +415,15 @@ export default function NoteTaking() {
         keyterms: `Extract and define the key terms and vocabulary from these notes in a glossary format:\n\n${editContent}`,
       };
 
+      // Use ai-chat for note processing
       const { data, error } = await supabase.functions.invoke('ai-chat', {
-        body: {
-          messages: [{ role: 'user', content: prompts[action] }],
-        },
+        body: { 
+          messages: [{ role: 'user', content: prompts[action] }]
+        }
       });
 
-      if (error) {
-        console.error('Function error:', error);
-        throw error;
-      }
-
-      if (data?.error) {
-        if (data.error.includes('429') || data.error.includes('Rate limit')) {
-          throw new Error('Rate limit exceeded. Please try again later.');
-        } else if (data.error.includes('402')) {
-          throw new Error('Please add credits to your workspace.');
-        } else {
-          throw new Error(data.error);
-        }
-      }
-
-      const cleanContent = data?.response || '';
+      if (error) throw error;
+      const cleanContent = data?.result;
 
       if (!cleanContent) {
         throw new Error('No content received from AI');
