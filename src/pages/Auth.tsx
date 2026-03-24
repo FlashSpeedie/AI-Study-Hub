@@ -241,7 +241,7 @@ export default function Auth() {
                   <Input
                     id="reset-email"
                     type="email"
-                    placeholder="you@ossm.edu"
+                    placeholder="you@student.edu"
                     className="pl-10 h-12"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -303,7 +303,7 @@ export default function Auth() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@ossm.edu"
+                  placeholder="you@student.edu"
                   className="pl-10 h-12"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}

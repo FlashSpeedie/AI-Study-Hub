@@ -501,7 +501,7 @@ export default function Account() {
                   id="school"
                   value={school}
                   onChange={(e) => setSchool(e.target.value)}
-                  placeholder="e.g. OSSM, OU, OSU"
+                  placeholder="e.g. OU, OSU"
                 />
               </div>
             </div>

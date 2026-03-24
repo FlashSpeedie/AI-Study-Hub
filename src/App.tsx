@@ -12,6 +12,7 @@ import { BackgroundTimer } from "@/components/BackgroundTimer";
 import { MiniPomodoroPreview } from "@/components/MiniPomodoroPreview";
 import { MiniTaskPreview } from "@/components/MiniTaskPreview";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { DataLossApology, useDataLossApology } from "@/components/DataLossApology";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -75,6 +76,27 @@ function AppRoutes() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [sessionUser, setSessionUser] = useState<any>(null);
+  
+  // Set up the data loss apology hook
+  const { Component: DataLossApologyComponent, showApology } = useDataLossApology();
+
+  // Show data loss apology on login or page refresh (when session is detected)
+  useEffect(() => {
+    if (session && !loading) {
+      // Only show if we haven't already shown it for this session
+      // Use a flag in sessionStorage to track if we've shown it
+      const apologyShownKey = `dataLossApologyShown_${session.user.id}`;
+      const hasShownApology = sessionStorage.getItem(apologyShownKey);
+      
+      if (!hasShownApology) {
+        // Show the apology
+        showApology(() => {
+          // Mark as shown after user interacts with it
+          sessionStorage.setItem(apologyShownKey, 'true');
+        });
+      }
+    }
+  }, [session, loading, showApology]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -157,6 +179,9 @@ function AppRoutes() {
           onComplete={() => setShowOnboarding(false)}
         />
       )}
+
+      {/* Data Loss Apology Dialog */}
+      <DataLossApologyComponent />
     </>
   );
 }

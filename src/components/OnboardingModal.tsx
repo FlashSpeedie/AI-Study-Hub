@@ -346,7 +346,7 @@ export function OnboardingModal({ userId, onComplete }: OnboardingModalProps) {
                     id="school"
                     value={school}
                     onChange={(e) => setSchool(e.target.value)}
-                    placeholder="e.g. OSSM, OU, OSU (optional)"
+                    placeholder="e.g. OU, OSU (optional)"
                   />
                 </div>
               </div>
