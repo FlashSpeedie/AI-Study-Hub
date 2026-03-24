@@ -701,7 +701,7 @@ export default function AIDetector() {
                           </CollapsibleTrigger>
                           <CollapsibleContent className="pt-3 space-y-3">
                             <div className="flex flex-wrap gap-2">
-                              {detectionResult.patternResult.patterns_found.map((pattern, i) => (
+                              {(detectionResult.patternResult.patterns_found || []).map((pattern, i) => (
                                 <Badge key={i} variant="secondary" className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
                                   {pattern}
                                 </Badge>
@@ -727,7 +727,7 @@ export default function AIDetector() {
                           </CollapsibleTrigger>
                           <CollapsibleContent className="pt-3 space-y-3">
                             <div className="flex flex-wrap gap-2">
-                              {detectionResult.vocabularyResult.vocabulary_markers.map((marker, i) => (
+                              {(detectionResult.vocabularyResult.vocabulary_markers || []).map((marker, i) => (
                                 <Badge key={i} variant="secondary" className="bg-blue-500/20 text-blue-700 dark:text-blue-300">
                                   {marker}
                                 </Badge>
@@ -753,7 +753,7 @@ export default function AIDetector() {
                           </CollapsibleTrigger>
                           <CollapsibleContent className="pt-3 space-y-3">
                             <div className="flex flex-wrap gap-2">
-                              {detectionResult.coherenceResult.structural_patterns.map((pattern, i) => (
+                              {(detectionResult.coherenceResult.structural_patterns || []).map((pattern, i) => (
                                 <Badge key={i} variant="secondary" className="bg-purple-500/20 text-purple-700 dark:text-purple-300">
                                   {pattern}
                                 </Badge>
