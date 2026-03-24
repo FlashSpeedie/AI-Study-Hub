@@ -768,7 +768,7 @@ export default function AIDetector() {
                     </div>
 
                     {/* Highlighted Text Section */}
-                    {text && detectionResult.patternResult && detectionResult.patternResult.patterns_found.length > 0 && (
+                    {text && detectionResult.patternResult && (detectionResult.patternResult.patterns_found?.length ?? 0) > 0 && (
                       <div className="space-y-2">
                         <h4 className="font-medium">AI Indicators in Text</h4>
                         <div 
