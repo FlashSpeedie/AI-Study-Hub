@@ -1,8 +1,17 @@
 User-agent: *
 Allow: /
+Allow: /login
+
 Disallow: /dashboard
 Disallow: /grades
 Disallow: /notes
 Disallow: /tasks
 Disallow: /account
-Sitemap: https://apexaistudy.com/sitemap.xml
+Disallow: /pomodoro
+Disallow: /calculator
+Disallow: /ai-assistant
+
+Sitemap: https://apexaistudy.vercel.app/sitemap.xml
+
+User-agent: Googlebot
+Crawl-delay: 1
