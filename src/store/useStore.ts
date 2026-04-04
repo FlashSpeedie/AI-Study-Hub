@@ -52,6 +52,7 @@ interface AppState {
   login: (user: User) => void;
   logout: () => void;
   toggleDarkMode: () => void;
+  setDarkMode: (dark: boolean) => void;
   
   // Actions - Academic Years
   addAcademicYear: (name: string) => void;
@@ -160,6 +161,14 @@ export const useStore = create<AppState>()(
           document.documentElement.classList.remove('dark');
         }
         set({ darkMode: newDarkMode });
+      },
+      setDarkMode: (dark: boolean) => {
+        if (dark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        set({ darkMode: dark });
       },
 
       // Academic Year Actions

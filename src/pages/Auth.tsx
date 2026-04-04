@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { GraduationCap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
+import { GraduationCap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Loader2, ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,9 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralCodeStatus, setReferralCodeStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const [referralId, setReferralId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -42,6 +45,54 @@ export default function Auth() {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Check for referral code in URL and pre-fill
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      setReferralCode(refCode.toUpperCase());
+      setIsLogin(false);
+    }
+  }, []);
+
+  // Validate referral code with debounce
+  useEffect(() => {
+    if (referralCode.length < 8) {
+      setReferralCodeStatus('idle');
+      setReferralId(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setReferralCodeStatus('checking');
+      const { data, error } = await supabase
+        .from('referrals')
+        .select('id, is_active, expires_at, max_uses, current_uses')
+        .eq('code', referralCode)
+        .single()
+
+      if (error || !data) {
+        setReferralCodeStatus('invalid');
+        setReferralId(null);
+        return;
+      }
+
+      const now = new Date();
+      const expired = new Date(data.expires_at) < now;
+      const maxed = data.current_uses >= data.max_uses
+
+      if (!data.is_active || expired || maxed) {
+        setReferralCodeStatus('invalid');
+        setReferralId(null);
+      } else {
+        setReferralCodeStatus('valid');
+        setReferralId(data.id);
+      }
+    }, 600)
+
+    return () => clearTimeout(timer)
+  }, [referralCode])
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +172,7 @@ export default function Auth() {
       } else {
         const redirectUrl = `${window.location.origin}/dashboard`;
         
-        const { error } = await supabase.auth.signUp({
+        const { error, data } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -139,6 +190,32 @@ export default function Auth() {
             toast.error(error.message);
           }
           return;
+        }
+
+        // If user signed up with a referral code, record it
+        if (referralId && data.user) {
+          await supabase.from('referral_uses').insert({
+            referral_id: referralId,
+            referred_user_id: data.user.id,
+          });
+          await supabase.rpc('increment_referral_uses', { ref_id: referralId });
+          await supabase.from('profiles').update({
+            referred_by: referralId
+          }).eq('id', data.user.id);
+        }
+
+        // Send welcome email (fire-and-forget, wrapped in try/catch)
+        if (data.user) {
+          try {
+            await supabase.functions.invoke('send-welcome-email', {
+              body: {
+                email: data.user.email,
+                username: formData.username || data.user.email?.split('@')[0] || 'Student'
+              }
+            })
+          } catch (e) {
+            console.error('Failed to send welcome email:', e)
+          }
         }
 
         toast.success('Account created! You can now sign in.');
@@ -336,6 +413,43 @@ export default function Auth() {
                 </button>
               </div>
             </div>
+
+            {!isLogin && (
+              <div>
+                <Label htmlFor="referral-code">
+                  Referral Code 
+                  <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+                </Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="referral-code"
+                    type="text"
+                    placeholder="Enter referral code (e.g. APEX1234)"
+                    value={referralCode}
+                    onChange={e => setReferralCode(e.target.value.toUpperCase().trim())}
+                    maxLength={8}
+                    className="uppercase tracking-widest font-mono"
+                  />
+                  {referralCodeStatus === 'valid' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 
+                      text-green-500 text-xs font-medium flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" /> Valid
+                    </div>
+                  )}
+                  {referralCodeStatus === 'invalid' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 
+                      text-red-500 text-xs font-medium flex items-center gap-1">
+                      <XCircle className="w-3 h-3" /> Invalid
+                    </div>
+                  )}
+                </div>
+                {referralCodeStatus === 'valid' && (
+                  <p className="text-xs text-green-600 mt-1">
+                    🎉 You were referred by a friend! Welcome to APEX.
+                  </p>
+                )}
+              </div>
+            )}
 
             {isLogin && (
               <div className="flex items-center justify-between">

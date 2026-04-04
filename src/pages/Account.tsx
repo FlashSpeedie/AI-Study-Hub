@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { formatDistanceToNow } from 'date-fns';
 import { 
   User, 
   Shield, 
@@ -21,7 +22,10 @@ import {
   Loader2,
   BookOpen,
   FileText,
-  ListTodo
+  ListTodo,
+  Users,
+  Copy,
+  CheckCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,7 +64,7 @@ const GRADE_LEVELS = [
 
 export default function Account() {
   const navigate = useNavigate();
-  const { darkMode, toggleDarkMode, academicYears, logout } = useStore();
+  const { darkMode, setDarkMode } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [user, setUser] = useState<any>(null);
@@ -102,6 +106,53 @@ export default function Account() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Referral state
+  const [userReferralCode, setUserReferralCode] = useState('');
+  const [referralUses, setReferralUses] = useState<any[]>([]);
+  const [totalReferrals, setTotalReferrals] = useState(0);
+  const [completedReferrals, setCompletedReferrals] = useState(0);
+  const [pendingReferrals, setPendingReferrals] = useState(0);
+  const [daysUntilEndOfMonth, setDaysUntilEndOfMonth] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+    
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const filePath = `avatars/${user.id}/avatar.${ext}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        });
+      
+      setAvatarUrl(publicUrl);
+      toast.success('Photo updated ✓');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      toast.error('Failed to upload photo');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     fetchUserData();
@@ -163,42 +214,63 @@ export default function Account() {
     }
   };
 
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !user) return;
+  const loadReferralData = async () => {
+    if (!user) return
     
-    setUploading(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const filePath = `avatars/${user.id}/avatar.${ext}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
-      
-      if (uploadError) throw uploadError;
-      
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-      
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          avatar_url: publicUrl,
-          updated_at: new Date().toISOString()
-        });
-      
-      setAvatarUrl(publicUrl);
-      toast.success('Photo updated ✓');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      toast.error('Failed to upload photo');
-    } finally {
-      setUploading(false);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('referral_code')
+      .eq('id', user.id)
+      .single()
+    
+    setUserReferralCode(profile?.referral_code || '')
+
+    const { data: referral } = await supabase
+      .from('referrals')
+      .select(`
+        id, code, current_uses, max_uses, expires_at,
+        referral_uses (
+          id, referred_at, has_used_tool, tools_used, completed_at
+        )
+      `)
+      .eq('referrer_id', user.id)
+      .single()
+
+    if (referral) {
+      const uses = referral.referral_uses || []
+      setReferralUses(uses)
+      setTotalReferrals(uses.length)
+      setCompletedReferrals(uses.filter((u: any) => u.has_used_tool).length)
+      setPendingReferrals(uses.filter((u: any) => !u.has_used_tool).length)
     }
-  };
+    
+    const now = new Date()
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    const days = Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    setDaysUntilEndOfMonth(days)
+  }
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(`https://apexaistudy.com/signup?ref=${userReferralCode}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleCopyCode = async () => {
+    await navigator.clipboard.writeText(userReferralCode)
+    setCopiedCode(true)
+    setTimeout(() => setCopiedCode(false), 2000)
+  }
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadReferralData();
+    }
+  }, [user]);
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -275,17 +347,16 @@ export default function Account() {
 
   const handleThemeChange = async (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
+    
+    // Apply immediately via Zustand
     if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
+      setDarkMode(true);
     } else if (newTheme === 'light') {
-      document.documentElement.classList.remove('dark');
+      setDarkMode(false);
     } else {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+      // System: check OS preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setDarkMode(prefersDark);
     }
     
     if (user) {
@@ -404,6 +475,10 @@ export default function Account() {
           <TabsTrigger value="preferences" className="gap-2">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Preferences</span>
+          </TabsTrigger>
+          <TabsTrigger value="referrals" className="gap-2">
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Referrals</span>
           </TabsTrigger>
           <TabsTrigger value="statistics" className="gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -649,6 +724,161 @@ export default function Account() {
               </div>
             </div>
           </Card>
+        </TabsContent>
+
+        {/* Referrals Tab */}
+        <TabsContent value="referrals">
+          <div className="space-y-6">
+            {/* Prize Banner */}
+            <div className="rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 
+              p-6 text-white mb-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-2xl mb-1">🏆</div>
+                  <h3 className="text-xl font-bold mb-1">
+                    Win ChatGPT Plus This Month!
+                  </h3>
+                  <p className="text-white/80 text-sm leading-relaxed max-w-md">
+                    The student with the most completed referrals by the end of 
+                    this month wins a free ChatGPT Plus subscription. A referral 
+                    counts when your friend signs up using your link and uses 
+                    at least one tool.
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0 ml-4">
+                  <div className="text-3xl font-black">{completedReferrals}</div>
+                  <div className="text-white/70 text-xs">your referrals</div>
+                  <div className="text-white/50 text-xs mt-1">
+                    {daysUntilEndOfMonth} days left
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <p className="text-white/60 text-xs">
+                  ⚡ How to qualify: Share your link → Friend signs up → 
+                  Friend uses any tool at least once → Counts as 1 referral
+                </p>
+              </div>
+            </div>
+
+            {/* Referral Link & Code */}
+            <Card className="p-6">
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm">Your Referral Link</h4>
+                
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={`https://apexaistudy.com/signup?ref=${userReferralCode}`}
+                    className="font-mono text-xs bg-muted"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCopyLink}
+                    aria-label="Copy referral link"
+                  >
+                    {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> 
+                             : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Or share code:</span>
+                  <div className="flex items-center gap-2 bg-primary/10 rounded-lg px-3 py-1.5">
+                    <span className="font-mono font-bold tracking-widest text-primary text-lg">
+                      {userReferralCode}
+                    </span>
+                    <button
+                      onClick={handleCopyCode}
+                      aria-label="Copy referral code"
+                      className="text-primary/60 hover:text-primary transition-colors"
+                    >
+                      {copiedCode ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  🔒 Your code never expires · up to 10 uses
+                </p>
+              </div>
+            </Card>
+
+            {/* Stats Counter */}
+            <Card className="p-6">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-4 rounded-xl bg-muted/50">
+                  <div className="text-2xl font-black text-foreground">{totalReferrals}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Total Sign Ups</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-green-50 dark:bg-green-950/20">
+                  <div className="text-2xl font-black text-green-600">{completedReferrals}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Completed</div>
+                  <div className="text-[10px] text-muted-foreground">(used a tool)</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-yellow-50 dark:bg-yellow-950/20">
+                  <div className="text-2xl font-black text-yellow-600">{pendingReferrals}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Pending</div>
+                  <div className="text-[10px] text-muted-foreground">(signed up only)</div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Referred Friends List */}
+            <Card className="p-6">
+              <div>
+                <h4 className="font-semibold text-sm mb-3">
+                  Friends You've Referred ({totalReferrals})
+                </h4>
+                {referralUses.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No referrals yet</p>
+                    <p className="text-xs mt-1">Share your link to get started!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {referralUses.map((use, i) => (
+                      <div key={use.id} 
+                        className="flex items-center justify-between p-3 
+                          rounded-lg bg-muted/30 border">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 
+                            flex items-center justify-center text-xs font-bold text-primary">
+                            {i + 1}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">
+                              Friend #{i + 1}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Joined {formatDistanceToNow(new Date(use.referred_at))} ago
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {use.has_used_tool ? (
+                            <span className="text-xs bg-green-100 text-green-700 
+                              dark:bg-green-950/30 dark:text-green-400
+                              px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" /> Completed
+                            </span>
+                          ) : (
+                            <span className="text-xs bg-yellow-100 text-yellow-700
+                              dark:bg-yellow-950/30 dark:text-yellow-400
+                              px-2 py-0.5 rounded-full font-medium">
+                              ⏳ Pending
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Statistics Tab */}

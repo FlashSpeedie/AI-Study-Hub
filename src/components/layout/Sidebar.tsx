@@ -15,7 +15,6 @@ import {
   Calculator,
   Timer,
   Mic,
-  Gamepad2,
   Settings,
   LogOut
 } from 'lucide-react';
@@ -70,13 +69,6 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/calculator', icon: Calculator, label: 'Math Engine' },
       { path: '/pomodoro', icon: Timer, label: 'Pomodoro' },
       { path: '/recordings', icon: Mic, label: 'Recordings' },
-    ],
-  },
-  {
-    id: 'fun',
-    label: 'FUN',
-    items: [
-      { path: '/games', icon: Gamepad2, label: 'Business Empire' },
     ],
   },
   {

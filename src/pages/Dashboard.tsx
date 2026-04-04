@@ -456,6 +456,34 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Referral nudge banner */}
+      <div className="rounded-xl border bg-gradient-to-r from-purple-50 
+        to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 
+        border-purple-200 dark:border-purple-800 p-4 
+        flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🏆</span>
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Win ChatGPT Plus this month!
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Refer friends to APEX — most referrals by month end wins.
+              Share your link in Account → Referrals.
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-shrink-0 border-purple-300 text-purple-700
+            hover:bg-purple-50 dark:text-purple-300"
+          onClick={() => navigate('/account')}
+        >
+          Share Link
+        </Button>
+      </div>
+
       {/* Two column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column - Your Subjects */}

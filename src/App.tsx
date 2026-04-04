@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { supabase } from '@/integrations/supabase/client';
+import { trackToolUse } from '@/utils/trackReferralToolUse';
+import { useStore } from '@/store/useStore';
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopNavbar } from "@/components/layout/TopNavbar";
 import { BottomTabBar } from "@/components/layout/BottomTabBar";
@@ -12,7 +14,7 @@ import { BackgroundTimer } from "@/components/BackgroundTimer";
 import { MiniPomodoroPreview } from "@/components/MiniPomodoroPreview";
 import { MiniTaskPreview } from "@/components/MiniTaskPreview";
 import { OnboardingModal } from "@/components/OnboardingModal";
-import { DataLossApology, useDataLossApology } from "@/components/DataLossApology";
+
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -36,7 +38,6 @@ const AITaskManager = lazy(() => import('./pages/AITaskManager'));
 const AIClassroomTutor = lazy(() => import('./pages/AIClassroomTutor'));
 const ClassroomHelper = lazy(() => import('./pages/ClassroomHelper'));
 const LectureRecordings = lazy(() => import('./pages/LectureRecordings'));
-const BusinessEmpire = lazy(() => import('./pages/BusinessEmpire'));
 const Account = lazy(() => import('./pages/Account'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -76,27 +77,73 @@ function AppRoutes() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [sessionUser, setSessionUser] = useState<any>(null);
-  
-  // Set up the data loss apology hook
-  const { Component: DataLossApologyComponent, showApology } = useDataLossApology();
+  const location = useLocation();
+  const { darkMode, setDarkMode } = useStore();
 
-  // Show data loss apology on login or page refresh (when session is detected)
+  // Apply darkMode to document on change and on initial load
   useEffect(() => {
-    if (session && !loading) {
-      // Only show if we haven't already shown it for this session
-      // Use a flag in sessionStorage to track if we've shown it
-      const apologyShownKey = `dataLossApologyShown_${session.user.id}`;
-      const hasShownApology = sessionStorage.getItem(apologyShownKey);
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  // Load saved theme from Supabase when session is confirmed
+  useEffect(() => {
+    const loadTheme = async () => {
+      if (!session?.user) return;
       
-      if (!hasShownApology) {
-        // Show the apology
-        showApology(() => {
-          // Mark as shown after user interacts with it
-          sessionStorage.setItem(apologyShownKey, 'true');
-        });
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('theme')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profile?.theme) {
+        if (profile.theme === 'dark') {
+          setDarkMode(true);
+        } else if (profile.theme === 'light') {
+          setDarkMode(false);
+        } else {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          setDarkMode(prefersDark);
+        }
+      }
+    };
+    
+    loadTheme();
+  }, [session, setDarkMode]);
+
+  // Track tool usage on route change
+  useEffect(() => {
+    const trackUsage = async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (!currentSession) return
+      
+      const toolMap: Record<string, string> = {
+        '/grades': 'grades',
+        '/notes': 'notes',
+        '/flashcards': 'flashcards',
+        '/quiz': 'quiz',
+        '/ai-assistant': 'ai-assistant',
+        '/ai-detector': 'ai-detector',
+        '/pomodoro': 'pomodoro',
+        '/tasks': 'tasks',
+        '/classroom': 'classroom',
+        '/recordings': 'recordings',
+      }
+      
+      const tool = toolMap[location.pathname]
+      if (tool) {
+        trackToolUse(currentSession.user.id, tool)
       }
     }
-  }, [session, loading, showApology]);
+    
+    trackUsage()
+  }, [location.pathname])
+  
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -161,13 +208,6 @@ function AppRoutes() {
         <Route path="/classroom" element={<ProtectedRoute session={session}><AIClassroomTutor /></ProtectedRoute>} />
         <Route path="/classroom-helper" element={<ProtectedRoute session={session}><ClassroomHelper /></ProtectedRoute>} />
         <Route path="/recordings" element={<ProtectedRoute session={session}><LectureRecordings /></ProtectedRoute>} />
-        <Route path="/games" element={
-          <ProtectedRoute session={session}>
-            <ErrorBoundary>
-              <BusinessEmpire />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        } />
         <Route path="/account" element={<ProtectedRoute session={session}><Account /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
@@ -179,9 +219,6 @@ function AppRoutes() {
           onComplete={() => setShowOnboarding(false)}
         />
       )}
-
-      {/* Data Loss Apology Dialog */}
-      <DataLossApologyComponent />
     </>
   );
 }
