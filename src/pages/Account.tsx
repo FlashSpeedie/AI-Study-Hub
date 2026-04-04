@@ -25,7 +25,8 @@ import {
   ListTodo,
   Users,
   Copy,
-  CheckCircle
+  CheckCircle,
+  RotateCcw
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -116,6 +117,7 @@ export default function Account() {
   const [daysUntilEndOfMonth, setDaysUntilEndOfMonth] = useState(0);
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [activeTab, setActiveTab] = useState('profile');
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -271,6 +273,32 @@ export default function Account() {
       loadReferralData();
     }
   }, [user]);
+
+  // Real-time subscription for referral updates
+  useEffect(() => {
+    if (activeTab !== 'referrals' || !user) return;
+
+    loadReferralData();
+
+    const channel = supabase
+      .channel('referral-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'referral_uses',
+        },
+        () => {
+          loadReferralData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab, user]);
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -462,7 +490,7 @@ export default function Account() {
         <p className="text-muted-foreground">Manage your profile, security, and preferences</p>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs defaultValue="profile" className="space-y-6" onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
           <TabsTrigger value="profile" className="gap-2">
             <User className="w-4 h-4" />
@@ -807,6 +835,18 @@ export default function Account() {
 
             {/* Stats Counter */}
             <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-sm">Your Referral Stats</h4>
+                <button
+                  onClick={loadReferralData}
+                  className="text-xs text-primary underline 
+                    hover:no-underline flex items-center gap-1"
+                  aria-label="Refresh referral stats"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Refresh
+                </button>
+              </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-4 rounded-xl bg-muted/50">
                   <div className="text-2xl font-black text-foreground">{totalReferrals}</div>
