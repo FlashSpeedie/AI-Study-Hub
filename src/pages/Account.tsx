@@ -177,18 +177,18 @@ export default function Account() {
       
       if (profileData) {
         setProfile(profileData);
-        setFullName(profileData.full_name || '');
-        setUsername(profileData.username || '');
-        setBio(profileData.bio || '');
-        setGradeLevel(profileData.grade_level || '');
-        setSchool(profileData.school || '');
-        setAvatarUrl(profileData.avatar_url || '');
-        setTheme(profileData.theme || 'system');
-        setNotificationTasksDue(profileData.notification_preferences?.tasksDue ?? true);
-        setNotificationAssignmentsDue(profileData.notification_preferences?.assignmentsDue ?? true);
-        setNotificationWeeklyReport(profileData.notification_preferences?.weeklyReport ?? false);
+        setFullName((profileData as any).full_name || '');
+        setUsername((profileData as any).username || '');
+        setBio((profileData as any).bio || '');
+        setGradeLevel((profileData as any).grade_level || '');
+        setSchool((profileData as any).school || '');
+        setAvatarUrl((profileData as any).avatar_url || '');
+        setTheme((profileData as any).theme || 'system');
+        setNotificationTasksDue((profileData as any).notification_preferences?.tasksDue ?? true);
+        setNotificationAssignmentsDue((profileData as any).notification_preferences?.assignmentsDue ?? true);
+        setNotificationWeeklyReport((profileData as any).notification_preferences?.weeklyReport ?? false);
       }
-      
+
       // Fetch stats
       const [subjectsCount, assignmentsCount, notesCount, tasksCompleted] = await Promise.all([
         supabase.from('subjects').select('*', { count: 'exact', head: true }).eq('user_id', authUser.id),
@@ -196,11 +196,11 @@ export default function Account() {
         supabase.from('notes').select('*', { count: 'exact', head: true }).eq('user_id', authUser.id),
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', authUser.id).eq('completed', true)
       ]);
-      
-      const memberSince = profileData?.created_at 
+
+      const memberSince = profileData?.created_at
         ? new Date(profileData.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
         : 'Unknown';
-      
+
       setStats({
         totalSubjects: subjectsCount.count || 0,
         totalAssignments: assignmentsCount.count || 0,
@@ -208,7 +208,7 @@ export default function Account() {
         tasksCompleted: tasksCompleted.count || 0,
         memberSince
       });
-      
+
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
@@ -218,34 +218,29 @@ export default function Account() {
 
   const loadReferralData = async () => {
     if (!user) return
-    
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('referral_code')
-      .eq('id', user.id)
-      .single()
-    
-    setUserReferralCode(profile?.referral_code || '')
 
-    const { data: referral } = await supabase
+    // Fetch referral data separately to avoid nested select issues
+    const { data: referral } = await (supabase as any)
       .from('referrals')
-      .select(`
-        id, code, current_uses, max_uses, expires_at,
-        referral_uses (
-          id, referred_at, has_used_tool, tools_used, completed_at
-        )
-      `)
+      .select('id, code, current_uses, max_uses, expires_at')
       .eq('referrer_id', user.id)
       .single()
 
+    setUserReferralCode(referral?.code || '')
+
     if (referral) {
-      const uses = referral.referral_uses || []
-      setReferralUses(uses)
-      setTotalReferrals(uses.length)
-      setCompletedReferrals(uses.filter((u: any) => u.has_used_tool).length)
-      setPendingReferrals(uses.filter((u: any) => !u.has_used_tool).length)
+      const { data: uses } = await (supabase as any)
+        .from('referral_uses')
+        .select('id, referred_at, has_used_tool, tools_used, completed_at')
+        .eq('referral_id', referral.id)
+
+      const referralUses = uses || []
+      setReferralUses(referralUses)
+      setTotalReferrals(referralUses.length)
+      setCompletedReferrals(referralUses.filter((u: any) => u.has_used_tool).length)
+      setPendingReferrals(referralUses.filter((u: any) => !u.has_used_tool).length)
     }
-    
+
     const now = new Date()
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     const days = Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
