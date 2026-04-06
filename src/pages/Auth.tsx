@@ -66,7 +66,7 @@ export default function Auth() {
 
     const timer = setTimeout(async () => {
       setReferralCodeStatus('checking');
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('referrals')
         .select('id, is_active, expires_at, max_uses, current_uses')
         .eq('code', referralCode)
@@ -194,14 +194,14 @@ export default function Auth() {
 
         // If user signed up with a referral code, record it
         if (referralId && data.user) {
-          await supabase.from('referral_uses').insert({
+          await (supabase as any).from('referral_uses').insert({
             referral_id: referralId,
             referred_user_id: data.user.id,
           });
-          await supabase.rpc('increment_referral_uses', { ref_id: referralId });
+          await (supabase as any).rpc('increment_referral_uses', { ref_id: referralId });
           await supabase.from('profiles').update({
             referred_by: referralId
-          }).eq('id', data.user.id);
+          } as any).eq('id', data.user.id);
         }
 
         // Send welcome email (fire-and-forget, wrapped in try/catch)

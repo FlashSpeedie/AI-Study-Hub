@@ -95,13 +95,15 @@ function AppRoutes() {
     const loadTheme = async () => {
       if (!session?.user) return;
       
-      const { data: profile } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('theme')
         .eq('id', session.user.id)
         .single();
 
-      if (profile?.theme) {
+      const profile = data as { theme?: string } | null;
+
+      if (!error && profile?.theme) {
         if (profile.theme === 'dark') {
           setDarkMode(true);
         } else if (profile.theme === 'light') {
