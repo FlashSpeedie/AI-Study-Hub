@@ -16,7 +16,8 @@ import {
   CheckCircle,
   AlertTriangle,
   RotateCcw,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { AcademicYear } from '@/types';
+import AIGradeChat from '@/components/grades/AIGradeChat';
 
 export default function Grades() {
   const {
@@ -100,6 +102,7 @@ export default function Grades() {
   const [parsedCategories, setParsedCategories] = useState<{ name: string; weight: number }[] | null>(null);
   const [parsedSubjectName, setParsedSubjectName] = useState<string>('');
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [showAIChat, setShowAIChat] = useState(false);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
@@ -1074,8 +1077,20 @@ If you cannot find clear grading information, still try to identify any mentione
   return (
     <div className="max-w-5xl mx-auto animate-in">
       <div className="mb-6">
-        <h1 className="text-3xl font-display font-bold mb-2">Grades</h1>
-        <p className="text-muted-foreground">Track your academic performance across all subjects</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-display font-bold mb-2">Grades</h1>
+            <p className="text-muted-foreground">Track your academic performance across all subjects</p>
+          </div>
+          <Button
+            onClick={() => setShowAIChat(true)}
+            className="gap-2"
+            variant="outline"
+          >
+            <Sparkles className="w-4 h-4" />
+            Add Grades with AI
+          </Button>
+        </div>
       </div>
       
       {/* Sync Status Bar */}
@@ -1464,6 +1479,13 @@ If you cannot find clear grading information, still try to identify any mentione
         accept=".pdf"
         style={{ display: 'none' }}
       />
+      
+      {showAIChat && (
+        <AIGradeChat
+          onClose={() => setShowAIChat(false)}
+          academicYears={academicYears}
+        />
+      )}
     </div>
   );
 }
