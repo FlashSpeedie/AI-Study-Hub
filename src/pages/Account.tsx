@@ -115,6 +115,7 @@ export default function Account() {
   const [completedReferrals, setCompletedReferrals] = useState(0);
   const [pendingReferrals, setPendingReferrals] = useState(0);
   const [daysUntilEndOfMonth, setDaysUntilEndOfMonth] = useState(0);
+  const [referralLoading, setReferralLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
@@ -219,32 +220,70 @@ export default function Account() {
   const loadReferralData = async () => {
     if (!user) return
 
-    // Fetch referral data separately to avoid nested select issues
-    const { data: referral } = await (supabase as any)
-      .from('referrals')
-      .select('id, code, current_uses, max_uses, expires_at')
-      .eq('referrer_id', user.id)
-      .single()
+    setReferralLoading(true)
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('referral_code')
+        .eq('id', user.id)
+        .single()
 
-    setUserReferralCode(referral?.code || '')
+      setUserReferralCode(profile?.referral_code || '')
 
-    if (referral) {
+      const { data: referral } = await (supabase as any)
+        .from('referrals')
+        .select('id, code, current_uses, max_uses, expires_at, is_active')
+        .eq('referrer_id', user.id)
+        .single()
+
+      if (!referral) {
+        setTotalReferrals(0)
+        setCompletedReferrals(0)
+        setPendingReferrals(0)
+        setReferralUses([])
+        setReferralLoading(false)
+        return
+      }
+
       const { data: uses } = await (supabase as any)
         .from('referral_uses')
-        .select('id, referred_at, has_used_tool, tools_used, completed_at')
+        .select(`
+          id,
+          referred_at,
+          has_used_tool,
+          tools_used,
+          completed_at,
+          referred_user_id,
+          profiles!referral_uses_referred_user_id_fkey (
+            username,
+            full_name,
+            avatar_url
+          )
+        `)
         .eq('referral_id', referral.id)
+        .order('referred_at', { ascending: false })
 
-      const referralUses = uses || []
-      setReferralUses(referralUses)
-      setTotalReferrals(referralUses.length)
-      setCompletedReferrals(referralUses.filter((u: any) => u.has_used_tool).length)
-      setPendingReferrals(referralUses.filter((u: any) => !u.has_used_tool).length)
+      const usesData = uses || []
+      const total = referral.current_uses || 0
+      const completed = usesData.filter((u: any) => u.has_used_tool).length
+      const pending = Math.max(0, total - completed)
+
+      setReferralUses(usesData)
+      setTotalReferrals(total)
+      setCompletedReferrals(completed)
+      setPendingReferrals(pending)
+
+      const now = new Date()
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      setDaysUntilEndOfMonth(
+        Math.ceil((endOfMonth.getTime() - now.getTime()) /
+          (1000 * 60 * 60 * 24))
+      )
+    } catch (err) {
+      console.error('loadReferralData error:', err)
+    } finally {
+      setReferralLoading(false)
     }
-
-    const now = new Date()
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    const days = Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    setDaysUntilEndOfMonth(days)
   }
 
   const handleCopyLink = async () => {
@@ -276,23 +315,20 @@ export default function Account() {
     loadReferralData();
 
     const channel = supabase
-      .channel('referral-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'referral_uses',
-        },
-        () => {
-          loadReferralData();
-        }
-      )
+      .channel('referral-realtime')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'referral_uses',
+      }, () => loadReferralData())
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'referrals',
+      }, () => loadReferralData())
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel) }
   }, [activeTab, user]);
 
   const handleSaveProfile = async () => {
@@ -874,21 +910,67 @@ export default function Account() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {referralUses.map((use, i) => (
-                      <div key={use.id} 
-                        className="flex items-center justify-between p-3 
-                          rounded-lg bg-muted/30 border">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 
-                            flex items-center justify-center text-xs font-bold text-primary">
-                            {i + 1}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium">
-                              Friend #{i + 1}
+                    {referralUses.map((use: any, i: number) => {
+                      const profile = use.profiles as any
+                      const displayName = profile?.full_name ||
+                        profile?.username ||
+                        `Friend #${i + 1}`
+                      const initial = displayName.charAt(0).toUpperCase()
+
+                      return (
+                        <div key={use.id} 
+                          className="flex items-center justify-between p-3 
+                            rounded-lg bg-muted/30 border">
+                          <div className="flex items-center gap-3">
+                            {profile?.avatar_url ? (
+                              <img
+                                src={profile.avatar_url}
+                                alt={displayName}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-primary/10 
+                                flex items-center justify-center text-xs font-bold text-primary">
+                                {initial}
+                              </div>
+                            )}
+                            <div>
+                              <div className="text-sm font-medium">
+                                {displayName}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Joined {formatDistanceToNow(new Date(use.referred_at), { addSuffix: true })}
+                              </div>
+                              {use.has_used_tool &&
+                                Array.isArray(use.tools_used) &&
+                                use.tools_used.length > 0 && (
+                                <div className="text-xs text-green-600 mt-0.5">
+                                  Used: {use.tools_used.slice(0, 3).join(', ')}
+                                  {use.tools_used.length > 3 ? ' +more' : ''}
+                                </div>
+                              )}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              Joined {formatDistanceToNow(new Date(use.referred_at))} ago
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {use.has_used_tool ? (
+                              <span className="text-xs bg-green-100 text-green-700 
+                                dark:bg-green-950/30 dark:text-green-400
+                                px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" /> Complete
+                              </span>
+                            ) : (
+                              <span className="text-xs bg-yellow-100 text-yellow-700
+                                dark:bg-yellow-950/30 dark:text-yellow-400
+                                px-2 py-0.5 rounded-full font-medium">
+                                ⏳ Pending
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
                             </div>
                           </div>
                         </div>

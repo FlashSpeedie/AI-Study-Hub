@@ -78,13 +78,10 @@ export default function Grades() {
     addAssignment,
     updateAssignment,
     deleteAssignment,
-    gradesSyncStatus,
-    gradesSyncError,
-    lastSyncedAt,
-    setGradesSyncStatus,
-    setGradesSyncError,
-    setLastSyncedAt,
   } = useStore();
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Dialog states
   const [yearDialog, setYearDialog] = useState<{ open: boolean; edit?: string; value: string }>({ open: false, value: '' });
@@ -104,6 +101,10 @@ export default function Grades() {
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
   const [showAIChat, setShowAIChat] = useState(false);
 
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) {
@@ -111,29 +112,35 @@ export default function Grades() {
     }
   }, []);
 
-  // Sync grades on mount
+  // Load grades from Supabase on mount
   useEffect(() => {
-    const syncGrades = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    const loadGrades = async () => {
+      setIsLoading(true);
+      setLoadError(null);
 
-      setGradesSyncStatus('syncing');
-      const result = await gradesSyncService.syncGradesToSupabase(session.user.id, academicYears);
-      
-      if (result.error) {
-        setGradesSyncStatus('error');
-        setGradesSyncError(result.error);
-      } else if (result.data) {
-        // Update store with synced data
-        useStore.setState({ academicYears: result.data });
-        setGradesSyncStatus('synced');
-        setLastSyncedAt(new Date().toLocaleTimeString());
-      } else {
-        setGradesSyncStatus('idle');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setIsLoading(false);
+        return;
       }
+
+      const localYears = useStore.getState().academicYears;
+      const result = await gradesSyncService.syncGradesToSupabase(
+        session.user.id,
+        localYears
+      );
+
+      if (result.error) {
+        console.error('Failed to load grades:', result.error);
+        setLoadError(result.error);
+      } else if (result.data) {
+        useStore.setState({ academicYears: result.data });
+      }
+
+      setIsLoading(false);
     };
 
-    syncGrades();
+    loadGrades();
   }, []);
 
   // Get current data
@@ -141,133 +148,143 @@ export default function Grades() {
   const currentSemester = currentYear?.semesters.find(s => s.id === selectedSemesterId);
   const currentSubject = currentSemester?.subjects.find(s => s.id === selectedSubjectId);
 
-  // Retry sync handler
-  const handleRetrySync = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    setGradesSyncStatus('syncing');
-    setGradesSyncError(null);
-    const result = await gradesSyncService.syncGradesToSupabase(
-      session.user.id, 
-      academicYears
-    );
-    if (result.error) {
-      setGradesSyncStatus('error');
-      setGradesSyncError(result.error);
-    } else if (result.data) {
-      useStore.setState({ academicYears: result.data });
-      setGradesSyncStatus('synced');
-      setLastSyncedAt(new Date().toLocaleTimeString());
-    }
-  };
-
   // Calculate weight validation
   const totalWeight = currentSubject ? getTotalCategoryWeight(currentSubject) : 0;
   const weightWarning = currentSubject && currentSubject.categories.length > 0 && totalWeight !== 100;
 
-  // Sync Status Bar UI
-  const renderSyncStatusBar = () => {
-    if (gradesSyncStatus === 'syncing') {
-      return (
-        <div className="flex items-center gap-2 text-sm text-blue-600 
-          bg-blue-50 dark:bg-blue-950/20 border border-blue-200 
-          dark:border-blue-800 rounded-lg px-4 py-2 mb-4">
-          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-          <span>Syncing your grades to cloud...</span>
-        </div>
-      );
-    }
-    
-    if (gradesSyncStatus === 'synced' && lastSyncedAt) {
-      return (
-        <div className="flex items-center gap-2 text-sm text-green-600 
-          bg-green-50 dark:bg-green-950/20 border border-green-200 
-          dark:border-green-800 rounded-lg px-4 py-2 mb-4">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          <span>All grades saved to cloud · Last synced {lastSyncedAt}</span>
-        </div>
-      );
-    }
-    
-    if (gradesSyncStatus === 'error') {
-      return (
-        <div className="flex items-center justify-between text-sm text-red-600 
-          bg-red-50 dark:bg-red-950/20 border border-red-200 
-          dark:border-red-800 rounded-lg px-4 py-2 mb-4">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>
-              {gradesSyncError || 'Could not sync grades — your data is safe locally'}
-            </span>
-          </div>
-          <button
-            onClick={handleRetrySync}
-            className="text-xs font-medium underline hover:no-underline 
-              ml-4 flex-shrink-0"
-            aria-label="Retry sync"
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-    
-    return null;
-  };
-
-  // Handlers
-  const handleSaveYear = () => {
+  // Handlers - Save to Supabase FIRST
+  const handleSaveYear = async () => {
     if (!yearDialog.value.trim()) {
       toast.error('Please enter a year name');
       return;
     }
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (yearDialog.edit) {
+      // Update
+      const { error } = await gradesSyncService.saveAcademicYear(session.user.id, {
+        id: yearDialog.edit,
+        name: yearDialog.value,
+      });
+      if (error) {
+        toast.error('Failed to update year. Please try again.');
+        console.error('handleSaveYear error:', error);
+        return;
+      }
       updateAcademicYear(yearDialog.edit, yearDialog.value);
       toast.success('Year updated');
     } else {
+      // Add new
+      const newYear = { id: crypto.randomUUID(), name: yearDialog.value };
+      const { error } = await gradesSyncService.saveAcademicYear(session.user.id, newYear);
+      if (error) {
+        toast.error('Failed to add year. Please try again.');
+        console.error('handleSaveYear error:', error);
+        return;
+      }
       addAcademicYear(yearDialog.value);
       toast.success('Year added');
     }
     setYearDialog({ open: false, value: '' });
   };
 
-  const handleSaveSemester = () => {
+  const handleSaveSemester = async () => {
     if (!semesterDialog.value.trim() || !selectedYearId) {
       toast.error('Please enter a semester name');
       return;
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (semesterDialog.edit) {
+      const { error } = await gradesSyncService.saveSemester(session.user.id, {
+        id: semesterDialog.edit,
+        name: semesterDialog.value,
+        academic_year_id: selectedYearId,
+      });
+      if (error) {
+        toast.error('Failed to update semester. Please try again.');
+        console.error('handleSaveSemester error:', error);
+        return;
+      }
       updateSemester(selectedYearId, semesterDialog.edit, semesterDialog.value);
       toast.success('Semester updated');
     } else {
+      const newSemester = { id: crypto.randomUUID(), name: semesterDialog.value };
+      const { error } = await gradesSyncService.saveSemester(session.user.id, {
+        ...newSemester,
+        academic_year_id: selectedYearId,
+      });
+      if (error) {
+        toast.error('Failed to add semester. Please try again.');
+        console.error('handleSaveSemester error:', error);
+        return;
+      }
       addSemester(selectedYearId, semesterDialog.value);
       toast.success('Semester added');
     }
     setSemesterDialog({ open: false, value: '' });
   };
 
-  const handleSaveSubject = () => {
+  const handleSaveSubject = async () => {
     if (!subjectDialog.value.trim() || !selectedYearId || !selectedSemesterId) {
       toast.error('Please enter a subject name');
       return;
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (subjectDialog.edit) {
+      const { error } = await gradesSyncService.saveSubject(session.user.id, {
+        id: subjectDialog.edit,
+        name: subjectDialog.value,
+        semester_id: selectedSemesterId,
+      });
+      if (error) {
+        toast.error('Failed to update subject. Please try again.');
+        console.error('handleSaveSubject error:', error);
+        return;
+      }
       updateSubject(selectedYearId, selectedSemesterId, subjectDialog.edit, subjectDialog.value);
       toast.success('Subject updated');
     } else {
+      const newSubject = { id: crypto.randomUUID(), name: subjectDialog.value };
+      const { error } = await gradesSyncService.saveSubject(session.user.id, {
+        ...newSubject,
+        semester_id: selectedSemesterId,
+      });
+      if (error) {
+        toast.error('Failed to add subject. Please try again.');
+        console.error('handleSaveSubject error:', error);
+        return;
+      }
       addSubject(selectedYearId, selectedSemesterId, subjectDialog.value);
       toast.success('Subject added');
     }
     setSubjectDialog({ open: false, value: '' });
   };
 
-  const handleDeleteSubject = (id: string) => {
+  const handleDeleteSubject = async (id: string) => {
     if (!selectedYearId || !selectedSemesterId) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { error } = await gradesSyncService.deleteSubject(session.user.id, id);
+    if (error) {
+      toast.error('Failed to delete subject. Please try again.');
+      console.error('handleDeleteSubject error:', error);
+      return;
+    }
     deleteSubject(selectedYearId, selectedSemesterId, id);
     toast.success('Subject deleted');
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     if (!categoryDialog.name.trim() || !categoryDialog.weight || !selectedYearId || !selectedSemesterId || !selectedSubjectId) {
       toast.error('Please fill in all fields');
       return;
@@ -278,7 +295,6 @@ export default function Grades() {
       return;
     }
     
-    // Check if adding this category would exceed 100%
     const currentWeight = categoryDialog.edit 
       ? totalWeight - (currentSubject?.categories.find(c => c.id === categoryDialog.edit)?.weight || 0)
       : totalWeight;
@@ -287,24 +303,58 @@ export default function Grades() {
       toast.error(`Cannot add ${weight}%. Current total is ${currentWeight}%. Maximum remaining is ${100 - currentWeight}%`);
       return;
     }
-    
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (categoryDialog.edit) {
+      const { error } = await gradesSyncService.saveCategory(session.user.id, {
+        id: categoryDialog.edit,
+        name: categoryDialog.name,
+        weight,
+        subject_id: selectedSubjectId,
+      });
+      if (error) {
+        toast.error('Failed to update category. Please try again.');
+        console.error('handleSaveCategory error:', error);
+        return;
+      }
       updateCategory(selectedYearId, selectedSemesterId, selectedSubjectId, categoryDialog.edit, categoryDialog.name, weight);
       toast.success('Category updated');
     } else {
+      const newCategory = { id: crypto.randomUUID(), name: categoryDialog.name, weight };
+      const { error } = await gradesSyncService.saveCategory(session.user.id, {
+        ...newCategory,
+        subject_id: selectedSubjectId,
+      });
+      if (error) {
+        toast.error('Failed to add category. Please try again.');
+        console.error('handleSaveCategory error:', error);
+        return;
+      }
       addCategory(selectedYearId, selectedSemesterId, selectedSubjectId, categoryDialog.name, weight);
       toast.success('Category added');
     }
     setCategoryDialog({ open: false, name: '', weight: '' });
   };
 
-  const handleDeleteCategory = (id: string) => {
+  const handleDeleteCategory = async (id: string) => {
     if (!selectedYearId || !selectedSemesterId || !selectedSubjectId) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { error } = await gradesSyncService.deleteCategory(session.user.id, id);
+    if (error) {
+      toast.error('Failed to delete category. Please try again.');
+      console.error('handleDeleteCategory error:', error);
+      return;
+    }
     deleteCategory(selectedYearId, selectedSemesterId, selectedSubjectId, id);
     toast.success('Category deleted');
   };
 
-  const handleSaveAssignment = () => {
+  const handleSaveAssignment = async () => {
     if (!assignmentDialog.name.trim() || !assignmentDialog.earned || !assignmentDialog.total || !selectedYearId || !selectedSemesterId || !selectedSubjectId) {
       toast.error('Please fill in all fields');
       return;
@@ -315,18 +365,54 @@ export default function Grades() {
       toast.error('Please enter valid point values');
       return;
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (assignmentDialog.edit) {
+      const { error } = await gradesSyncService.saveAssignment(session.user.id, {
+        id: assignmentDialog.edit,
+        name: assignmentDialog.name,
+        earnedPoints: earned,
+        totalPoints: total,
+        category_id: assignmentDialog.categoryId,
+      });
+      if (error) {
+        toast.error('Failed to update assignment. Please try again.');
+        console.error('handleSaveAssignment error:', error);
+        return;
+      }
       updateAssignment(selectedYearId, selectedSemesterId, selectedSubjectId, assignmentDialog.categoryId, assignmentDialog.edit, assignmentDialog.name, earned, total);
       toast.success('Assignment updated');
     } else {
+      const newAssignment = { id: crypto.randomUUID(), name: assignmentDialog.name, earnedPoints: earned, totalPoints: total };
+      const { error } = await gradesSyncService.saveAssignment(session.user.id, {
+        ...newAssignment,
+        category_id: assignmentDialog.categoryId,
+      });
+      if (error) {
+        toast.error('Failed to add assignment. Please try again.');
+        console.error('handleSaveAssignment error:', error);
+        return;
+      }
       addAssignment(selectedYearId, selectedSemesterId, selectedSubjectId, assignmentDialog.categoryId, assignmentDialog.name, earned, total);
       toast.success('Assignment added');
     }
     setAssignmentDialog({ open: false, categoryId: '', name: '', earned: '', total: '' });
   };
 
-  const handleDeleteAssignment = (categoryId: string, assignmentId: string) => {
+  const handleDeleteAssignment = async (categoryId: string, assignmentId: string) => {
     if (!selectedYearId || !selectedSemesterId || !selectedSubjectId) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { error } = await gradesSyncService.deleteAssignment(session.user.id, assignmentId);
+    if (error) {
+      toast.error('Failed to delete assignment. Please try again.');
+      console.error('handleDeleteAssignment error:', error);
+      return;
+    }
     deleteAssignment(selectedYearId, selectedSemesterId, selectedSubjectId, categoryId, assignmentId);
     toast.success('Assignment deleted');
   };
@@ -1092,52 +1178,21 @@ If you cannot find clear grading information, still try to identify any mentione
           </Button>
         </div>
       </div>
-      
-      {/* Sync Status Bar */}
-      {renderSyncStatusBar()}
 
-      {/* Sync Status Bar */}
-      {gradesSyncStatus === 'syncing' && (
-        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
-          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-          <span className="text-sm text-blue-700 dark:text-blue-300">Syncing grades to cloud...</span>
+      {isLoading && (
+        <div className="space-y-4">
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="h-32 bg-muted animate-pulse rounded-xl" />
+          <div className="h-32 bg-muted animate-pulse rounded-xl" />
         </div>
       )}
-      {gradesSyncStatus === 'synced' && (
-        <div className="mb-4 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
-          <CheckCircle className="w-4 h-4 text-green-600" />
-          <span className="text-sm text-green-700 dark:text-green-300">
-            All grades saved · Last synced {lastSyncedAt}
-          </span>
-        </div>
-      )}
-      {gradesSyncStatus === 'error' && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
-          <AlertTriangle className="w-4 h-4 text-red-600" />
-          <span className="text-sm text-red-700 dark:text-red-300 flex-1">
-            Could not sync — data is safe locally
-          </span>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={async () => {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session) {
-                setGradesSyncStatus('syncing');
-                const result = await gradesSyncService.syncGradesToSupabase(session.user.id, academicYears);
-                if (result.error) {
-                  setGradesSyncStatus('error');
-                  setGradesSyncError(result.error);
-                } else if (result.data) {
-                  useStore.setState({ academicYears: result.data });
-                  setGradesSyncStatus('synced');
-                  setLastSyncedAt(new Date().toLocaleTimeString());
-                }
-              }
-            }}
-            className="gap-1"
-          >
-            <RotateCcw className="w-3 h-3" />
+
+      {loadError && !isLoading && (
+        <div className="text-center py-12">
+          <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+          <p className="font-medium">Failed to load grades</p>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button onClick={() => window.location.reload()}>
             Retry
           </Button>
         </div>
