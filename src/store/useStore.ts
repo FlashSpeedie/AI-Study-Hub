@@ -284,10 +284,6 @@ export const useStore = create<AppState>()(
           selectedSubjectId: state.selectedSubjectId === subjectId ? null : state.selectedSubjectId,
         }));
       },
-            if (error) console.error('Failed to delete subject from cloud:', error);
-          });
-        }
-      },
       setSelectedSubject: (id) => set({ selectedSubjectId: id }),
 
       // Category Actions

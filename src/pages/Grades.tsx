@@ -80,9 +80,6 @@ export default function Grades() {
     deleteAssignment,
   } = useStore();
 
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
   // Dialog states
   const [yearDialog, setYearDialog] = useState<{ open: boolean; edit?: string; value: string }>({ open: false, value: '' });
   const [semesterDialog, setSemesterDialog] = useState<{ open: boolean; edit?: string; value: string }>({ open: false, value: '' });
@@ -160,7 +157,10 @@ export default function Grades() {
     }
     
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     if (yearDialog.edit) {
       // Update
@@ -197,7 +197,10 @@ export default function Grades() {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     if (semesterDialog.edit) {
       const { error } = await gradesSyncService.saveSemester(session.user.id, {
@@ -236,7 +239,10 @@ export default function Grades() {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     if (subjectDialog.edit) {
       const { error } = await gradesSyncService.saveSubject(session.user.id, {
@@ -272,7 +278,10 @@ export default function Grades() {
     if (!selectedYearId || !selectedSemesterId) return;
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     const { error } = await gradesSyncService.deleteSubject(session.user.id, id);
     if (error) {
@@ -305,7 +314,10 @@ export default function Grades() {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     if (categoryDialog.edit) {
       const { error } = await gradesSyncService.saveCategory(session.user.id, {
@@ -342,7 +354,10 @@ export default function Grades() {
     if (!selectedYearId || !selectedSemesterId || !selectedSubjectId) return;
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     const { error } = await gradesSyncService.deleteCategory(session.user.id, id);
     if (error) {
@@ -367,7 +382,10 @@ export default function Grades() {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     if (assignmentDialog.edit) {
       const { error } = await gradesSyncService.saveAssignment(session.user.id, {
@@ -405,7 +423,10 @@ export default function Grades() {
     if (!selectedYearId || !selectedSemesterId || !selectedSubjectId) return;
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      toast.error('Please log in to save categories.');
+      return;
+    }
 
     const { error } = await gradesSyncService.deleteAssignment(session.user.id, assignmentId);
     if (error) {

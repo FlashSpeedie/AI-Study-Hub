@@ -969,29 +969,7 @@ export default function Account() {
                         </div>
                       )
                     })}
-                  </div>
-                )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {use.has_used_tool ? (
-                            <span className="text-xs bg-green-100 text-green-700 
-                              dark:bg-green-950/30 dark:text-green-400
-                              px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                              <CheckCircle className="w-3 h-3" /> Completed
-                            </span>
-                          ) : (
-                            <span className="text-xs bg-yellow-100 text-yellow-700
-                              dark:bg-yellow-950/30 dark:text-yellow-400
-                              px-2 py-0.5 rounded-full font-medium">
-                              ⏳ Pending
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+</div>
                 )}
               </div>
             </Card>
