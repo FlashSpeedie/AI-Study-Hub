@@ -287,7 +287,7 @@ export default function Account() {
   }
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(`https://apexaistudy.com/signup?ref=${userReferralCode}`)
+    await navigator.clipboard.writeText(`https://apexaistudy.vercel.app/signup?ref=${userReferralCode}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -828,7 +828,7 @@ export default function Account() {
                 <div className="flex gap-2">
                   <Input
                     readOnly
-                    value={`https://apexaistudy.com/signup?ref=${userReferralCode}`}
+                    value={`https://apexaistudy.vercel.app/signup?ref=${userReferralCode}`}
                     className="font-mono text-xs bg-muted"
                   />
                   <Button
